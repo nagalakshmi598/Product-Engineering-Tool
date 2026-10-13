@@ -8,6 +8,14 @@ const multer = require('multer');
 
 const store = require('./store');
 const { extractScenarios } = require('./parse');
+
+/*
+ * DIY's sheets label their rows: "Module Name : Workspaces (Negative)" above a
+ * run of negative checks. Reading those labels is turned on for DIY alone,
+ * because the other products' sheets are flat lists and a stray short line in
+ * one of those should stay the scenario it is.
+ */
+const LABELLED_SHEETS = new Set(['diy']);
 const { askAssistant } = require('./assistant');
 const attachments = require('./attachments');
 const { generateTestCases, hasApiKey, activeProvider, keyProblem } = require('./testcases');
@@ -144,9 +152,11 @@ app.post('/api/enhancements', enhancementUpload, wrap(async (req, res) => {
   let scenarios = [];
   let extraColumns = [];
   let skipped = 0;
+  let labelled = 0;
   if (sheet) {
-    ({ scenarios, extraColumns, skipped } = extractScenarios(sheet.buffer, sheet.originalname, {
+    ({ scenarios, extraColumns, skipped, labelled = 0 } = extractScenarios(sheet.buffer, sheet.originalname, {
       splitLines: truthy(req.body.splitLines),
+      headings: LABELLED_SHEETS.has(product),
     }));
   }
 
@@ -193,9 +203,14 @@ app.post('/api/enhancements/:id/scenarios', upload.single('file'), wrap(async (r
   if (!req.file) return res.status(400).json({ error: 'Attach a .csv or .xlsx file of test scenarios.' });
 
   const mode = req.body.mode === 'append' ? 'append' : 'replace';
-  const { scenarios, extraColumns, skipped } = extractScenarios(req.file.buffer, req.file.originalname, {
-    splitLines: truthy(req.body.splitLines),
-  });
+  const { scenarios, extraColumns, skipped, labelled = 0 } = extractScenarios(
+    req.file.buffer,
+    req.file.originalname,
+    {
+      splitLines: truthy(req.body.splitLines),
+      headings: LABELLED_SHEETS.has(enhancement.product),
+    }
+  );
 
   const updated = (await store.setScenarios(enhancement.id, {
     scenarios,
@@ -205,7 +220,7 @@ app.post('/api/enhancements/:id/scenarios', upload.single('file'), wrap(async (r
   }));
   keepOriginal(enhancement.id, req.file);
 
-  res.json({ enhancement: updated, imported: scenarios.length, skipped, mode });
+  res.json({ enhancement: updated, imported: scenarios.length, skipped, labelled, mode });
 }));
 
 // Add a single scenario typed in the tool (no CSV) — appended after the last row.

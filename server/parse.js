@@ -124,7 +124,75 @@ function splitCell(value) {
  * Turn an uploaded CSV/XLSX buffer into a normalised scenario list.
  * Every scenario ends up on its own row with a fresh sequential serial number.
  */
-function extractScenarios(buffer, filename, { splitLines = true } = {}) {
+/* ---------------- heading rows ----------------
+   Some sheets label their rows rather than listing them flat: a line reading
+   "Module Name : Workspaces (Negative)" says that everything beneath it is a
+   negative check of Workspaces. Taken literally the label becomes test number
+   one, with a result pill of its own, and the rows below lose the one thing
+   the sheet was saying about them. */
+
+/** A scenario says what to do; a label names what follows. */
+const SCENARIO_OPENER = /^(?:verify|check|ensure|validate|confirm|test|assert|the user|user)\b/i;
+
+const KIND = /^(positive|negative|edge)$/i;
+const TITLE_KIND = { positive: 'Positive', negative: 'Negative', edge: 'Edge' };
+
+/* "Module Name : Workspaces (Negative)" — the module, and what follows it. */
+const MODULE_LINE = /^module\s*name\s*[:\-\u2013\u2014]?\s*(.+)$/i;
+
+/* "Positive Test Scenarios", with or without something named in front. */
+const KIND_LINE = /^(.*?)[\s:\-\u2013\u2014]*\b(positive|negative|edge)\s+test\s+(?:scenarios?|cases?)\.?$/i;
+
+/* "Clouds & Accounts(Positive)" — a name with its kind in brackets. */
+const BRACKETED = /^(.*?)\s*\((positive|negative|edge)\)\.?$/i;
+
+/**
+ * Read one row as a label, or decide it is a scenario.
+ * @returns {{section?: string, type?: string}|null}
+ */
+function readHeading(text) {
+  const line = String(text || '').trim().replace(/\s+/g, ' ');
+  if (!line) return null;
+  if (SCENARIO_OPENER.test(line)) return null;
+
+  const tidy = (s) => String(s || '').replace(/^[\s:\-\u2013\u2014]+|[\s:\-\u2013\u2014]+$/g, '').trim();
+
+  const module = MODULE_LINE.exec(line);
+  if (module) {
+    const rest = tidy(module[1]);
+    const bracketed = BRACKETED.exec(rest);
+    if (bracketed) {
+      return { section: tidy(bracketed[1]), type: TITLE_KIND[bracketed[2].toLowerCase()] };
+    }
+    const kinded = KIND_LINE.exec(rest);
+    if (kinded) {
+      const section = tidy(kinded[1]);
+      return section ? { section, type: TITLE_KIND[kinded[2].toLowerCase()] } : { type: TITLE_KIND[kinded[2].toLowerCase()] };
+    }
+    return { section: rest };
+  }
+
+  const kinded = KIND_LINE.exec(line);
+  if (kinded) {
+    const section = tidy(kinded[1]);
+    return section ? { section, type: TITLE_KIND[kinded[2].toLowerCase()] } : { type: TITLE_KIND[kinded[2].toLowerCase()] };
+  }
+
+  const bracketed = BRACKETED.exec(line);
+  if (bracketed && KIND.test(bracketed[2])) {
+    const section = tidy(bracketed[1]);
+    if (section) return { section, type: TITLE_KIND[bracketed[2].toLowerCase()] };
+  }
+
+  /* A bare label: short, naming something, and not a sentence. A real check
+     runs to a full stop and reads as an instruction; this does neither. */
+  const words = line.split(' ').length;
+  if (words <= 8 && !/[.!?]$/.test(line)) return { section: line };
+
+  return null;
+}
+
+function extractScenarios(buffer, filename, { splitLines = true, headings = false } = {}) {
   const ext = path.extname(filename || '').toLowerCase();
   const rows =
     ext === '.xlsx' || ext === '.xls' || ext === '.xlsm'
@@ -148,6 +216,11 @@ function extractScenarios(buffer, filename, { splitLines = true } = {}) {
   const scenarios = [];
   let skipped = 0;
 
+  // what the most recent label said the rows beneath it are
+  let section = '';
+  let type = '';
+  let labelled = 0;
+
   for (let i = layout.headerRow + 1; i < rows.length; i += 1) {
     const row = rows[i];
     if (isBlankRow(row)) continue;
@@ -160,10 +233,26 @@ function extractScenarios(buffer, filename, { splitLines = true } = {}) {
       continue;
     }
 
+    if (headings && texts.length === 1) {
+      const label = readHeading(texts[0]);
+      if (label) {
+        if (label.section) section = label.section;
+        if (label.type) type = label.type;
+        labelled += 1;
+        continue;
+      }
+    }
+
     const extra = {};
     layout.extraColumns.forEach((col) => {
       extra[col.name] = row[col.idx] || '';
     });
+
+    /* The sheet's own columns win: a label only fills in what it did not say. */
+    if (headings) {
+      if (section && !extra.Section) extra.Section = section;
+      if (type && !extra.Type) extra.Type = type;
+    }
 
     texts.forEach((text) => {
       scenarios.push({
@@ -183,7 +272,13 @@ function extractScenarios(buffer, filename, { splitLines = true } = {}) {
     throw err;
   }
 
-  return { scenarios, extraColumns, skipped };
+  if (headings && labelled) {
+    ['Section', 'Type'].forEach((name) => {
+      if (scenarios.some((s) => s.extra[name]) && !extraColumns.includes(name)) extraColumns.push(name);
+    });
+  }
+
+  return { scenarios, extraColumns, skipped, labelled };
 }
 
-module.exports = { extractScenarios, parseCsv };
+module.exports = { extractScenarios, parseCsv, readHeading };
