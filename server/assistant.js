@@ -1130,10 +1130,42 @@ const PRODUCT_HINTS = {
   email: ['email', 'mail', 'mailbox', 'inbox', 'folder', 'outlook', 'gmail', 'exchange'],
   content: ['file', 'folder', 'drive', 'document', 'sharepoint', 'onedrive', 'permission', 'content'],
   datasprawl: ['sprawl', 'duplicate', 'stale', 'redundant', 'orphan'],
+  diy: ['diy', 'self-serve', 'self serve', 'self-service', 'self service', 'do-it-yourself'],
 };
 
+/*
+ * Words that name a product outright, rather than merely belonging to it.
+ *
+ * Every product moves files and channels about, so those words say nothing
+ * about which one a feature is for. These do: "mailbox" is email's, wherever
+ * it appears. Slack and Teams are deliberately absent — a DIY migration is
+ * usually Slack to Teams, and naming the platforms says nothing about which
+ * product runs it.
+ */
+const PRODUCT_NAMED = {
+  diy: /\bdiy\b|\bdo[- ]it[- ]yourself\b|\bself[- ]serv(?:e|ice)\b/,
+  datasprawl: /\bdata[- ]?sprawl\b/,
+  email: /\bemail (?:migration|product)\b|\bmailbox\b|\binbox\b|\boutlook\b|\bgmail\b|\bexchange\b/,
+  content: /\bcontent (?:migration|product)\b|\bsharepoint\b|\bonedrive\b/,
+  message: /\bmessage (?:migration|product)\b/,
+};
+
+/**
+ * The product a drafted feature belongs under.
+ *
+ * Naming a product wins. Otherwise the product being looked at wins, because
+ * someone reading a product's scenarios is almost always asking about it —
+ * and a DIY feature is described in the same words as every other product,
+ * so counting those words would file it under whichever one owns them.
+ */
 function guessProduct(feature, fallback) {
   const q = String(feature).toLowerCase();
+
+  const named = Object.keys(PRODUCT_NAMED).find((key) => PRODUCT_NAMED[key].test(q));
+  if (named) return named;
+
+  if (fallback && PRODUCT_HINTS[fallback]) return fallback;
+
   let best = null;
   let bestScore = 0;
 
@@ -1142,8 +1174,7 @@ function guessProduct(feature, fallback) {
     if (score > bestScore) { best = key; bestScore = score; }
   });
 
-  if (best) return best;
-  return (fallback && PRODUCT_HINTS[fallback]) ? fallback : 'message';
+  return best || 'message';
 }
 
 /**
@@ -1162,6 +1193,7 @@ const FRAMING = [
   /^there\s+(?:is|will be)\s+(?:a|an)\s+(?:new\s+)?(?:feature|functionality)\s*(?:where|that|which|called|named)?\s*/i,
   /^(?:the|this|a|an|our)\s+(?:new\s+)?(?:feature|functionality)\s+(?:is|where|that|which|lets|allows|enables|called|named)\s*/i,
   /^(?:in|for)\s+this\s+(?:feature|release|sprint)\s*,?\s*/i,
+  /^(?:in|for|within|on)\s+(?:the\s+)?[\w-]+(?:\s+[\w-]+){0,2}\s+(?:product|tool|module)\b[,:]?\s*/i,
 ];
 
 /* Words that make a span a statement about the feature rather than its name. */
@@ -1173,6 +1205,7 @@ const PROPER = {
   sharepoint: 'SharePoint', onedrive: 'OneDrive', dropbox: 'Dropbox',
   outlook: 'Outlook', gmail: 'Gmail', jira: 'Jira', confluence: 'Confluence',
   zoom: 'Zoom', webex: 'Webex', egnyte: 'Egnyte', cloudfuze: 'CloudFuze',
+  diy: 'DIY', csv: 'CSV', api: 'API', sso: 'SSO', url: 'URL', pdf: 'PDF',
 };
 
 function restoreNames(text) {
@@ -1213,9 +1246,14 @@ function titleFor(feature, scenarios) {
   const body = scenarios.map((s) => s.scenario).join(' ').toLowerCase();
   const grounded = terms.filter((term) => body.includes(term)).length;
 
-  if (terms.length >= 2 && grounded >= 1 && fromAsk.split(/\s+/).length >= 2) return fromAsk;
-
   const section = (scenarios.find((s) => s.section) || {}).section;
+  const readsAsSentence = fromAsk.split(/\s+/).length > 8;
+
+  if (terms.length >= 2 && grounded >= 1 && fromAsk.split(/\s+/).length >= 2
+      && !(readsAsSentence && section)) {
+    return fromAsk;
+  }
+
   if (section) return enhancementName(section);
 
   const first = (scenarios[0] || {}).scenario || '';

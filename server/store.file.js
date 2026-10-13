@@ -26,6 +26,7 @@ const PRODUCTS = [
   { key: 'email', label: 'Email', blurb: 'Mailbox, folders and email delivery' },
   { key: 'content', label: 'Content', blurb: 'Files, folders and permissions' },
   { key: 'datasprawl', label: 'Data Sprawl', blurb: 'Duplicate and stale data across clouds' },
+  { key: 'diy', label: 'DIY', blurb: 'Do-it-yourself migrations' },
 ];
 
 let db = { enhancements: [], documents: [] };

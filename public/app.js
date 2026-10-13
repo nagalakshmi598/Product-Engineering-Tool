@@ -191,7 +191,7 @@ function monogram(label) {
 }
 
 /** Each product carries its own accent, so the nav is scannable at a glance. */
-const PRODUCT_TONE = { message: 'a', email: 'b', content: 'c', datasprawl: 'd' };
+const PRODUCT_TONE = { message: 'a', email: 'b', content: 'c', datasprawl: 'd', diy: 'e' };
 
 function navItem({ label, blurb, count, active, onClick, muted, caret, tone }) {
   const li = document.createElement('li');
