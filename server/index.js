@@ -729,6 +729,24 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
   res.status(status).json({ error: err.message || 'Something went wrong.' });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`QA Test Scenario Tool running at http://localhost:${PORT}`);
+});
+
+/* Starting it twice is the ordinary way to meet this: the tool is already up
+   in another window, or in one that was closed without stopping it. Node's
+   own answer is a stack trace ending in EADDRINUSE, which buries the one
+   thing worth knowing. */
+server.on('error', (err) => {
+  if (err.code !== 'EADDRINUSE') throw err;
+
+  console.error(
+    `\nPort ${PORT} is already in use, so the tool did not start.\n\n`
+      + `  • It may already be running — try http://localhost:${PORT}\n`
+      + '  • To stop the one that holds the port:\n'
+      + `      Windows      netstat -ano | findstr :${PORT}      then  taskkill /PID <pid> /F\n`
+      + '      macOS/Linux  kill $(lsof -t -i:' + PORT + ')\n'
+      + `  • Or run this one somewhere else:  PORT=4311 node server/index.js\n`
+  );
+  process.exit(1);
 });
