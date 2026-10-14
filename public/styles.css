@@ -397,21 +397,21 @@ body {
 /* ---------- pass / fail status ---------- */
 .scenario-table th:nth-last-child(2), .status-cell { width: 108px; text-align: center; }
 .status-cell { white-space: nowrap; }
-/* The result of a run, down a column of hundreds of rows. One width for all
-   three, so the marks line up and the eye can run down them; the label stays
-   left of centre with the chip's own width doing the aligning. */
+/* The result of a run, down a column of hundreds of rows. The word is the
+   whole of it — a tick and a cross beside "Pass" and "Fail" say the same
+   thing twice, and at this size they only add clutter. The colour carries
+   the meaning; one width for all three keeps the column straight. */
 .status-pill {
-  display: inline-flex; align-items: center; gap: 7px;
-  min-width: 84px;
-  border-radius: var(--cf-radius-pill); padding: 5px 14px 5px 10px; cursor: pointer;
-  font: 600 12px/1.5 inherit; letter-spacing: .005em;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 86px;
+  border-radius: var(--cf-radius-pill); padding: 5px 16px; cursor: pointer;
+  font: 600 12px/1.5 inherit; letter-spacing: .02em;
   border: 1px solid transparent;
   transition: border-color .14s var(--ease), box-shadow .14s var(--ease), background .14s var(--ease);
 }
 .status-pill:hover { box-shadow: var(--shadow-sm); }
 .status-pill:focus-visible { outline: 2px solid var(--blue-mid); outline-offset: 2px; }
 .status-pill:disabled { opacity: .55; cursor: progress; box-shadow: none; }
-.status-pill svg { display: block; flex: 0 0 auto; }
 
 .status-pill.is-pass { background: var(--pass-bg); color: var(--pass); border-color: var(--pass-line); }
 .status-pill.is-fail { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-line); }
