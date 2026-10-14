@@ -2087,11 +2087,27 @@ async function saveDraft(draft, button) {
         product: draft.product,
         name: draft.name,
         scenarios: draft.scenarios,
+        enhancementId: draft.enhancementId || undefined,
       }),
     });
 
     const where = productLabel(draft.product);
-    botBubble('bot', `${plural(result.added, 'scenario')} ${result.appended ? 'added to' : 'saved as'} "${result.enhancement.name}" under ${where} Migration Scenarios.`);
+    const numbers = result.firstSno && result.lastSno && result.added
+      ? `, numbered ${result.firstSno}${result.lastSno > result.firstSno ? `–${result.lastSno}` : ''}`
+      : '';
+
+    if (result.continued) {
+      botBubble('bot', result.added
+        ? `${plural(result.added, 'scenario')} added to the end of "${result.enhancement.name}"${numbers}.`
+        : `Nothing new to add — "${result.enhancement.name}" already covers all ${plural(result.skipped, 'scenario')}.`);
+    } else {
+      botBubble('bot', `${plural(result.added, 'scenario')} ${result.appended ? 'added to' : 'saved as'} "${result.enhancement.name}" under ${where} Migration Scenarios${numbers}.`);
+    }
+
+    if (result.skipped && result.added) {
+      botBubble('bot', `${plural(result.skipped, 'scenario')} skipped — already in the set.`);
+    }
+
     botOpenLink(result.enhancement.id, result.enhancement.name);
 
     if (result.added) {
@@ -2138,7 +2154,9 @@ function botDraftActions(draft) {
   const save = document.createElement('button');
   save.type = 'button';
   save.className = 'bot-action is-primary';
-  save.textContent = `Saving to ${productLabel(draft.product)}…`;
+  save.textContent = draft.enhancementId
+    ? `Adding to ${draft.name}…`
+    : `Saving to ${productLabel(draft.product)}…`;
   save.disabled = true;
   wrap.appendChild(save);
 
@@ -2214,6 +2232,11 @@ async function askBot(question) {
     form.append('question', text);
     form.append('history', JSON.stringify(bot.history));
     if (state.product) form.append('currentProduct', state.product);
+
+    // reading a set of scenarios means the next ones belong on the end of it
+    if (state.view === 'scenarios' && state.enhancement) {
+      form.append('currentEnhancement', state.enhancement.id);
+    }
     sent.forEach((file) => form.append('files', file, file.name));
 
     // no Content-Type header: the browser sets the multipart boundary

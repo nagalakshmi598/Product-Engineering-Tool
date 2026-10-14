@@ -1222,6 +1222,9 @@ function restoreNames(text) {
 function nameFromAsk(feature) {
   let rest = String(feature).trim();
   FRAMING.forEach((pattern) => { rest = rest.replace(pattern, ''); });
+  // "...scenarios for a feature where a user renames a workspace" leaves the
+  // "where" behind once the framing in front of it has gone
+  rest = rest.replace(/^(?:where|when|which|that|in which|whereby)\s+/i, '').trim();
   rest = rest.replace(/^(?:a|an|the)\s+/i, '').trim();
 
   const words = rest.split(/\s+/).filter(Boolean);
@@ -1283,7 +1286,13 @@ function wantsSaved(q) {
     || /\binto the tool\b|\bto the tool\b|\bin the tool\b/.test(q);
 }
 
-async function askAssistant({ question, history = [], currentProduct, attachments = [] } = {}) {
+async function askAssistant({
+  question,
+  history = [],
+  currentProduct,
+  attachments = [],
+  openEnhancement = null,
+} = {}) {
   const text = String(question || '').trim();
   if (!text) {
     const err = new Error('Ask a question first.');
@@ -1382,8 +1391,9 @@ async function askAssistant({ question, history = [], currentProduct, attachment
       provider,
       draft: scenarios.length ? {
         feature: featureOf(text.toLowerCase()),
-        name: titleFor(featureOf(text.toLowerCase()), scenarios),
-        product: guessProduct(text, currentProduct),
+        name: openEnhancement ? openEnhancement.name : titleFor(featureOf(text.toLowerCase()), scenarios),
+        product: openEnhancement ? openEnhancement.product : guessProduct(text, currentProduct),
+        enhancementId: openEnhancement ? openEnhancement.id : null,
         scenarios,
         save: wantsSaved(text),
       } : null,

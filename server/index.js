@@ -598,12 +598,19 @@ async function enhancementFor(product, name) {
 }
 
 app.post('/api/assistant/scenarios', wrap(async (req, res) => {
-  const { product, name, scenarios, description } = req.body || {};
+  const { product, name, scenarios, description, enhancementId } = req.body || {};
 
-  if (!store.isProduct(product)) {
+  /* Naming a set outright is how the assistant carries on one already open:
+     the rows go on the end of it, whatever the drafted name turned out to be. */
+  const continuing = enhancementId ? await store.getEnhancement(enhancementId) : null;
+  if (enhancementId && !continuing) {
+    return res.status(404).json({ error: 'That set of scenarios no longer exists.' });
+  }
+
+  if (!continuing && !store.isProduct(product)) {
     return res.status(400).json({ error: 'Pick a product for these scenarios.' });
   }
-  if (!name || !String(name).trim()) {
+  if (!continuing && (!name || !String(name).trim())) {
     return res.status(400).json({ error: 'Give the enhancement a name.' });
   }
   if (!Array.isArray(scenarios) || !scenarios.length) {
@@ -634,7 +641,7 @@ app.post('/api/assistant/scenarios', wrap(async (req, res) => {
   if (rows.some((r) => r.extra.Type)) extraColumns.push('Type');
   if (rows.some((r) => r.extra.Section)) extraColumns.push('Section');
 
-  const existing = await enhancementFor(product, name);
+  const existing = continuing || (await enhancementFor(product, name));
   const { kept, skipped } = withoutDuplicates(rows, existing ? existing.scenarios : []);
 
   if (existing) {
@@ -644,6 +651,7 @@ app.post('/api/assistant/scenarios', wrap(async (req, res) => {
         added: 0,
         skipped,
         appended: true,
+        continued: Boolean(continuing),
       });
     }
 
@@ -658,6 +666,9 @@ app.post('/api/assistant/scenarios', wrap(async (req, res) => {
       added: kept.length,
       skipped,
       appended: true,
+      continued: Boolean(continuing),
+      firstSno: updated.scenarios.length - kept.length + 1,
+      lastSno: updated.scenarios.length,
     });
   }
 
@@ -681,7 +692,12 @@ const chatUpload = multer({
 // The in-tool assistant: answers questions about what this tool holds, and
 // reads whatever is attached to the message.
 app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
-  const { question, currentProduct } = req.body || {};
+  const { question, currentProduct, currentEnhancement } = req.body || {};
+
+  /* An open set of scenarios is the thread of the conversation: a screenshot
+     dropped into the chat while reading it is almost always the next part of
+     the same feature, so the draft carries on there. */
+  const open = currentEnhancement ? await store.getEnhancement(currentEnhancement) : null;
 
   // multipart sends history as a JSON string; plain JSON sends it as an array
   let history = req.body && req.body.history;
@@ -690,7 +706,13 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
   }
 
   const read = await attachments.readAll(req.files);
-  const result = await askAssistant({ question, history, currentProduct, attachments: read });
+  const result = await askAssistant({
+    question,
+    history,
+    currentProduct,
+    attachments: read,
+    openEnhancement: open ? { id: open.id, name: open.name, product: open.product } : null,
+  });
 
   res.json({
     ...result,
