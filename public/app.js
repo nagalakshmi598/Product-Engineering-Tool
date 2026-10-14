@@ -497,9 +497,13 @@ async function addScenarioInTool(event) {
 
 const ICON = {
   download: '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M8 1.6v7.2m0 0L5.2 6M8 8.8 10.8 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.4 10.8v1.6a2 2 0 0 0 2 2h7.2a2 2 0 0 0 2-2v-1.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
-  pass: '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3.4 8.4l3 3 6.2-6.8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  fail: '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M4.4 4.4l7.2 7.2M11.6 4.4l-7.2 7.2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>',
-  pending: '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 5.2V8l2 1.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  /* A result is read down a column of two hundred rows, so the mark has to
+     carry at a glance: a filled disc reads as a decision taken, where a bare
+     stroke at this size reads as a scratch. Not run stays hollow — nothing
+     has been decided about it yet. */
+  pass: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M4.9 8.3l2.1 2.1 4.1-4.6" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  fail: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M5.7 5.7l4.6 4.6M10.3 5.7l-4.6 4.6" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg>',
+  pending: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2.4 2.3"/></svg>',
 };
 
 /** An icon-only button: the label lives in the tooltip and for screen readers. */
