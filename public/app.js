@@ -143,7 +143,17 @@ window.addEventListener('popstate', (event) => {
 /* ---------------- helpers ---------------- */
 
 async function api(url, options) {
-  const res = await fetch(url, options);
+  let res;
+  try {
+    res = await fetch(url, options);
+  } catch (err) {
+    /* fetch only rejects when the request never arrived: the server is down,
+       or the machine is off the network. The browser's own wording for that
+       is "Failed to fetch", which says nothing about what to do. */
+    const offline = `The tool is not responding. It runs on this machine — check the server is still started, then try again.`;
+    throw new Error(offline);
+  }
+
   if (res.status === 204) return null;
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
@@ -2261,6 +2271,15 @@ async function askBot(question) {
   } catch (err) {
     thinking.remove();
     botBubble('bot', err.message, 'is-error');
+
+    /* Nothing reached the tool, so nothing is lost: the question goes back in
+       the box and the files back in the tray, ready to send again. */
+    if (!el('botInput').value.trim()) el('botInput').value = text;
+    if (sent.length && !bot.files.length) {
+      bot.files = sent;
+      renderBotFiles();
+      botBubble('bot', `${plural(sent.length, 'file')} kept — press send to try again.`);
+    }
   } finally {
     bot.busy = false;
     el('botSend').disabled = false;
