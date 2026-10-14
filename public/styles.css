@@ -729,6 +729,10 @@ body {
 .bot-action:disabled { opacity: .6; cursor: progress; }
 .bot-action.is-primary { background: var(--cf-color-primary); border-color: var(--cf-color-primary); color: var(--white); }
 .bot-action.is-primary:hover { background: var(--blue-dark); border-color: var(--blue-dark); }
+
+/* agreeing to something that cannot be undone */
+.bot-action.is-danger { background: var(--danger); border-color: var(--danger); color: var(--white); }
+.bot-action.is-danger:hover { background: #a31f1f; border-color: #a31f1f; }
 .bot-actions-note { font-size: 11px; color: var(--faint); margin-left: 2px; }
 
 /* a Section column, when a drafted set brought one, stays out of the way */

@@ -197,6 +197,25 @@ async function addScenario(id, { scenario, extra }) {
  * runs several at once, so they always overlap. The positional update touches
  * the one row, leaving the rest of the array exactly as it is on the server.
  */
+/** Reword one scenario, leaving its number, result and test cases alone. */
+async function updateScenario(id, sno, { scenario }) {
+  const current = await getEnhancement(id);
+  if (!current) return { status: 'no-enhancement' };
+
+  const row = (current.scenarios || []).find((s) => Number(s.sno) === Number(sno));
+  if (!row) return { status: 'no-scenario' };
+
+  const after = String(scenario).trim().slice(0, 2000);
+  const saved = await (await enhancements()).findOneAndUpdate(
+    { _id: id, 'scenarios.sno': Number(sno) },
+    { $set: { 'scenarios.$.scenario': after, updatedAt: new Date().toISOString() } },
+    { returnDocument: 'after' }
+  );
+
+  if (!saved) return { status: 'no-scenario' };
+  return { status: 'ok', enhancement: fromDoc(saved), before: row.scenario, after };
+}
+
 async function setTestCases(id, sno, { testCases, model, provider, generatedAt }) {
   const row = await (await enhancements()).findOneAndUpdate(
     { _id: id, 'scenarios.sno': Number(sno) },
@@ -351,6 +370,7 @@ module.exports = {
   setTestCases,
   setScenarioStatus,
   deleteScenario,
+  updateScenario,
   updateEnhancement,
   deleteEnhancement,
   allEnhancements,

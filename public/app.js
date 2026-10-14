@@ -362,22 +362,18 @@ function renderEnhancements() {
     const card = document.createElement('button');
     card.type = 'button';
     card.className = 'enh-card';
+    /* The name and how many scenarios it holds are what anyone is choosing
+       between here. The file it came from and when it was last touched are
+       on the set's own page, where they are worth reading. */
     card.innerHTML = `
       <span>
         <p class="enh-name"></p>
-        <p class="enh-meta"></p>
       </span>
       <span class="enh-right">
         <span class="pill"></span>
         <span class="chev">&rsaquo;</span>
       </span>`;
     card.querySelector('.enh-name').textContent = enh.name;
-    const meta = [
-      enh.description,
-      enh.sourceFile,
-      `Updated ${formatDate(enh.updatedAt)}`,
-    ].filter(Boolean).join('  ·  ');
-    card.querySelector('.enh-meta').textContent = meta;
     card.querySelector('.pill').textContent = plural(enh.scenarioCount, 'scenario');
     card.addEventListener('click', () => openEnhancement(enh.id));
     dom.enhancementList.appendChild(card);
@@ -2051,6 +2047,77 @@ el('botInput').addEventListener('paste', (event) => {
   }
 });
 
+/* ---------------- changes asked for in the chat ----------------
+   The tool has no delete buttons: everything that changes the scenarios is
+   asked for here. A delete is read back first and waits to be agreed, since
+   it is the one thing that cannot be undone. */
+
+async function runCommand(command, target) {
+  try {
+    const result = await api('/api/assistant/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command, enhancementId: target ? target.id : null }),
+    });
+
+    botBubble('bot', result.done);
+
+    // the page is showing what just changed, so bring it up to date
+    await loadProducts();
+
+    if (result.gone) {
+      if (state.view === 'scenarios' && state.enhancement && target && state.enhancement.id === target.id) {
+        await openProduct(result.product);
+      } else if (state.view === 'enhancements') {
+        await openProduct(state.product);
+      } else if (state.view === 'dashboard') {
+        renderDashboard();
+      }
+      return;
+    }
+
+    if (state.view === 'scenarios' && state.enhancement && target && state.enhancement.id === target.id) {
+      await openEnhancement(target.id, { push: false });
+    } else if (state.view === 'enhancements') {
+      await openProduct(state.product);
+    }
+  } catch (err) {
+    botBubble('bot', err.message, 'is-error');
+  }
+}
+
+/** Read a destructive change back, and wait to be told to go ahead. */
+function askToConfirm(command, target) {
+  const row = document.createElement('div');
+  row.className = 'bot-actions';
+
+  const go = document.createElement('button');
+  go.type = 'button';
+  go.className = 'bot-action is-danger';
+  go.textContent = 'Yes, delete';
+
+  const stop = document.createElement('button');
+  stop.type = 'button';
+  stop.className = 'bot-action';
+  stop.textContent = 'Cancel';
+
+  const settle = (chosen) => {
+    go.disabled = true;
+    stop.disabled = true;
+    row.remove();
+    if (chosen) runCommand(command, target);
+    else botBubble('bot', 'Left as it is.');
+  };
+
+  go.addEventListener('click', () => settle(true));
+  stop.addEventListener('click', () => settle(false));
+
+  row.appendChild(go);
+  row.appendChild(stop);
+  el('botLog').appendChild(row);
+  el('botLog').scrollTop = el('botLog').scrollHeight;
+}
+
 /** CSV of the drafted rows, in the same shape the upload dialog accepts. */
 function draftToCsv(draft) {
   const cell = (v) => {
@@ -2255,6 +2322,16 @@ async function askBot(question) {
       .forEach((a) => botBubble('bot', `📎 ${a.name} — ${a.note}`, 'is-error'));
 
     botBubble('bot', result.answer);
+
+    if (result.command) {
+      bot.history.push({ role: 'user', content: text });
+      bot.history.push({ role: 'assistant', content: result.answer });
+      bot.history = bot.history.slice(-8);
+
+      if (result.command.confirm) askToConfirm(result.command, result.target);
+      else await runCommand(result.command, result.target);
+      return;
+    }
 
     if (result.draft && result.draft.scenarios.length) {
       // drafted scenarios belong in their product's page; put them there

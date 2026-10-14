@@ -226,6 +226,22 @@ function setTestCases(id, sno, { testCases, model, provider, generatedAt }) {
   return scenario;
 }
 
+/** Reword one scenario, leaving its number, result and test cases alone. */
+function updateScenario(id, sno, { scenario }) {
+  syncFromDisk();
+  const enhancement = getEnhancement(id);
+  if (!enhancement) return { status: 'no-enhancement' };
+
+  const row = enhancement.scenarios.find((s) => Number(s.sno) === Number(sno));
+  if (!row) return { status: 'no-scenario' };
+
+  const before = row.scenario;
+  row.scenario = String(scenario).trim().slice(0, 2000);
+  enhancement.updatedAt = new Date().toISOString();
+  persist();
+  return { status: 'ok', enhancement, before, after: row.scenario };
+}
+
 const SCENARIO_STATUS = ['pass', 'fail', 'pending'];
 
 /** Set or clear the run result on one scenario row. */
@@ -377,6 +393,7 @@ module.exports = {
   setScenarios,
   addScenario,
   deleteScenario,
+  updateScenario,
   setTestCases,
   setScenarioStatus,
   SCENARIO_STATUS,

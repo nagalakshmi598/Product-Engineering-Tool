@@ -18,6 +18,7 @@ const { extractScenarios } = require('./parse');
 const LABELLED_SHEETS = new Set(['diy']);
 const { askAssistant } = require('./assistant');
 const attachments = require('./attachments');
+const { parseCommand, describeCommand } = require('./commands');
 const { generateTestCases, hasApiKey, activeProvider, keyProblem } = require('./testcases');
 const testCaseJobs = require('./testcasejobs');
 const {
@@ -684,6 +685,117 @@ app.post('/api/assistant/scenarios', wrap(async (req, res) => {
   res.status(201).json({ enhancement: store.summary(created), added: kept.length, skipped, appended: false });
 }));
 
+/* ---------------- changes asked for in the chat ----------------
+   Reading the instruction and carrying it out are separate on purpose: what
+   was understood is put to the person first, and a delete is not done until
+   they say so. */
+
+/** One scenario, two scenarios. */
+function plural(n, word) {
+  return `${n} ${word}${Number(n) === 1 ? '' : 's'}`;
+}
+
+/** The set an instruction is about: the one named, or the one being read. */
+async function targetOf(command, openId) {
+  if (command.name) {
+    const all = await store.allEnhancements();
+    const wanted = scenarioKey(command.name);
+
+    const exact = all.find((e) => e.name.toLowerCase() === command.name.toLowerCase());
+    if (exact) return exact;
+
+    let best = null;
+    let bestScore = 0;
+    all.forEach((e) => {
+      const score = alike(wanted, scenarioKey(e.name));
+      if (score > bestScore) { best = e; bestScore = score; }
+    });
+    if (bestScore >= 0.5) return store.getEnhancement(best.id);
+    return null;
+  }
+
+  return openId ? store.getEnhancement(openId) : null;
+}
+
+app.post('/api/assistant/command', wrap(async (req, res) => {
+  const { command, enhancementId } = req.body || {};
+  if (!command || !command.kind) return res.status(400).json({ error: 'No change was asked for.' });
+
+  const target = await targetOf(command, enhancementId);
+  if (!target) {
+    return res.status(404).json({
+      error: command.name
+        ? `I cannot find a set called "${command.name}".`
+        : 'Open the set of scenarios first, then ask again.',
+    });
+  }
+
+  if (command.kind === 'delete-set') {
+    await store.deleteEnhancement(target.id);
+    return res.json({
+      done: `Deleted "${target.name}" and its ${plural(target.scenarios.length, 'scenario')}.`,
+      gone: true,
+      product: target.product,
+    });
+  }
+
+  if (command.kind === 'rename-set') {
+    const updated = await store.updateEnhancement(target.id, { name: command.to });
+    return res.json({
+      done: `Renamed to "${updated.name}".`,
+      enhancement: store.summary(updated),
+    });
+  }
+
+  if (command.kind === 'set-status') {
+    const missing = [];
+    let changed = 0;
+    for (const sno of command.snos) {
+      const result = await store.setScenarioStatus(target.id, sno, command.status);
+      if (result.status === 'ok') changed += 1; else missing.push(sno);
+    }
+    const label = command.status === 'pending' ? 'not run' : command.status;
+    return res.json({
+      done: `${plural(changed, 'scenario')} marked ${label}.`
+        + (missing.length ? ` No scenario numbered ${missing.join(', ')}.` : ''),
+      enhancement: store.summary(await store.getEnhancement(target.id)),
+    });
+  }
+
+  if (command.kind === 'edit-scenario') {
+    const result = await store.updateScenario(target.id, command.sno, { scenario: command.text });
+    if (result.status !== 'ok') {
+      return res.status(404).json({ error: `"${target.name}" has no scenario ${command.sno}.` });
+    }
+    return res.json({
+      done: `Scenario ${command.sno} now reads: ${result.after}`,
+      enhancement: store.summary(result.enhancement),
+    });
+  }
+
+  if (command.kind === 'delete-scenarios') {
+    /* Taken from the highest number down: removing a row renumbers the ones
+       after it, so working upwards would delete the wrong rows. */
+    const order = [...command.snos].sort((a, b) => b - a);
+    const missing = [];
+    let removed = 0;
+
+    for (const sno of order) {
+      const result = await store.deleteScenario(target.id, sno);
+      if (result.status === 'ok') removed += 1; else missing.push(sno);
+    }
+
+    return res.json({
+      done: `${plural(removed, 'scenario')} deleted from "${target.name}".`
+        + (missing.length ? ` No scenario numbered ${missing.join(', ')}.` : '')
+        + (removed ? ' The rows after them have been renumbered.' : ''),
+      enhancement: store.summary(await store.getEnhancement(target.id)),
+    });
+  }
+
+  return res.status(400).json({ error: 'I do not know how to do that yet.' });
+}));
+
 const chatUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: attachments.MAX_BYTES, files: attachments.MAX_FILES },
@@ -703,6 +815,20 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
   let history = req.body && req.body.history;
   if (typeof history === 'string') {
     try { history = JSON.parse(history); } catch (err) { history = []; }
+  }
+
+  /* An instruction to change something is answered here rather than by the
+     model: it has to mean the same thing every time it is given. */
+  const command = parseCommand(question);
+  if (command) {
+    const target = await targetOf(command, open ? open.id : null);
+    return res.json({
+      answer: describeCommand(command, { enhancementName: target ? target.name : null }),
+      command,
+      target: target ? { id: target.id, name: target.name, product: target.product } : null,
+      model: 'built-in',
+      provider: 'local',
+    });
   }
 
   const read = await attachments.readAll(req.files);
