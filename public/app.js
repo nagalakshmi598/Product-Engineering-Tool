@@ -42,7 +42,7 @@ const dom = {
   enhancementSearch: el('enhancementSearch'),
   scenarioView: el('scenarioView'),
   enhancementTitle: el('enhancementTitle'),
-  enhancementSub: el('enhancementSub'),
+
   scenarioHead: el('scenarioHead'),
   scenarioBody: el('scenarioBody'),
   scenarioFoot: el('scenarioFoot'),
@@ -82,9 +82,8 @@ const dom = {
   fileFieldLabel: el('fileFieldLabel'),
   nameFieldLabel: el('nameFieldLabel'),
   docTabs: el('docTabs'),
-  renameEnhancementBtn: el('renameEnhancementBtn'),
-  renameForm: el('renameForm'),
-  renameInput: el('renameInput'),
+
+
 };
 
 /* ---------------- browser history ----------------
@@ -404,14 +403,7 @@ async function openEnhancement(id, { push = true } = {}) {
 
     hideAllViews();
     dom.scenarioView.hidden = false;
-    dom.renameForm.hidden = true;
     dom.enhancementTitle.textContent = enhancement.name;
-    dom.enhancementSub.textContent = [
-      productLabel(enhancement.product),
-      enhancement.description,
-      enhancement.sourceFile,
-      `Uploaded ${formatDate(enhancement.createdAt)}`,
-    ].filter(Boolean).join('  ·  ');
     dom.exportBtn.href = `/api/enhancements/${enhancement.id}/export.csv`;
 
     const linked = state.enhancementDocs[0];
@@ -1018,50 +1010,6 @@ async function runTestCases(sno, regenerate, button, body) {
     problem.className = 'tc-error';
     problem.textContent = err.message;
     body.appendChild(problem);
-  }
-}
-
-/* ---------------- rename the open enhancement ---------------- */
-
-function startRename() {
-  if (!state.enhancement) return;
-  dom.renameInput.value = state.enhancement.name;
-  dom.renameForm.hidden = false;
-  dom.renameInput.focus();
-  dom.renameInput.select();
-}
-
-function cancelRename() {
-  dom.renameForm.hidden = true;
-}
-
-async function submitRename(event) {
-  event.preventDefault();
-  const enh = state.enhancement;
-  if (!enh) return;
-
-  const name = dom.renameInput.value.trim();
-  if (!name) {
-    toast('Enter an enhancement name.', true);
-    return;
-  }
-  if (name === enh.name) {
-    cancelRename();
-    return;
-  }
-
-  try {
-    await api(`/api/enhancements/${enh.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
-    });
-    cancelRename();
-    await loadProducts();
-    await openEnhancement(enh.id);
-    toast('Enhancement name updated.');
-  } catch (err) {
-    toast(err.message, true);
   }
 }
 
@@ -1891,9 +1839,8 @@ el('newEnhancementBtn').addEventListener('click', () => openCreateModal(state.pr
 dom.reuploadBtn.addEventListener('click', openReuploadModal);
 dom.uploadForm.addEventListener('submit', submitUpload);
 dom.addScenarioForm.addEventListener('submit', addScenarioInTool);
-dom.renameEnhancementBtn.addEventListener('click', startRename);
-dom.renameForm.addEventListener('submit', submitRename);
-el('renameCancel').addEventListener('click', cancelRename);
+
+
 el('addDocumentBtn').addEventListener('click', openDocumentModal);
 dom.documentSearch.addEventListener('input', (e) => {
   state.docFilter = e.target.value;

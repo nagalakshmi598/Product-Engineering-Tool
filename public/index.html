@@ -59,16 +59,11 @@
       <div id="scenarioView" hidden>
         <div class="view-head">
           <div>
-            <h2 class="view-title titled">
+            <!-- The name alone. Renaming is asked for in the chat:
+                 "rename this to Workspace checks". -->
+            <h2 class="view-title">
               <span id="enhancementTitle"></span>
-              <button type="button" id="renameEnhancementBtn" class="icon-edit" title="Rename this enhancement" aria-label="Rename"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false"><path d="M2 11.6V14h2.4l7.1-7.1-2.4-2.4L2 11.6z" fill="currentColor"/><path d="M14.6 4.1a.9.9 0 0 0 0-1.3l-1.4-1.4a.9.9 0 0 0-1.3 0l-1.1 1.1 2.7 2.7 1.1-1.1z" fill="currentColor"/></svg></button>
             </h2>
-            <form id="renameForm" class="rename-row" hidden>
-              <input type="text" id="renameInput" class="input" maxlength="140" autocomplete="off" />
-              <button type="submit" class="btn btn-primary rename-btn">Save</button>
-              <button type="button" id="renameCancel" class="btn btn-outline rename-btn">Cancel</button>
-            </form>
-            <p class="view-sub" id="enhancementSub"></p>
           </div>
           <div class="view-actions">
             <input type="search" id="scenarioSearch" class="input" placeholder="Search test scenarios" />

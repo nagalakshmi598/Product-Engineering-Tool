@@ -941,7 +941,6 @@ body {
 .tab.active .tab-count { background: var(--blue); color: var(--white); }
 
 /* ---------- inline name editing ---------- */
-.view-title.titled { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .icon-edit {
   display: inline-grid; place-items: center; flex: 0 0 auto;
   width: 24px; height: 24px; padding: 0;
@@ -959,9 +958,6 @@ body {
   transition: background .14s ease, color .14s ease, border-color .14s ease;
 }
 .edit-btn:hover { background: var(--blue-tint-2); color: var(--blue); border-color: var(--blue-line); }
-.rename-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
-.rename-row .input { width: min(460px, 100%); }
-.rename-btn { padding: 7px 13px; font-size: 12.5px; }
 
 .doc-edit {
   display: grid; gap: 10px;
