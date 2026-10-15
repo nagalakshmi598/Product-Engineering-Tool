@@ -919,15 +919,6 @@ body {
 .tc-steps li { margin-bottom: 5px; }
 .tc-steps li:last-child { margin-bottom: 0; }
 
-/* The identifier a scenario's test cases carry. Read down the column and
-   compared against a defect tracker, so it keeps one width and never breaks
-   across lines. */
-.scenario-table th.tcid { width: 118px; }
-.scenario-table td.tcid {
-  white-space: nowrap; font-variant-numeric: tabular-nums;
-  font-size: 12px; font-weight: 600; color: var(--cf-color-primary);
-}
-
 /* ---------- product tabs (Documents) ---------- */
 .tabs {
   display: flex; flex-wrap: wrap; gap: 2px;

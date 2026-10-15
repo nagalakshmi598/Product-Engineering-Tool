@@ -643,41 +643,17 @@ function closeActionMenu() {
   document.querySelectorAll('.bulk-btn').forEach((b) => b.setAttribute('aria-expanded', 'false'));
 }
 
-/**
- * The identifier a scenario's test cases were written under.
- *
- * One scenario can hold several cases — TC_DTUS_001a, _001b — which share
- * everything but the last letter, so the column shows the stem and the range
- * rather than repeating it. A scenario whose cases have not been written yet
- * has no identifier, and the column is left empty for it.
- */
-function testCaseId(scenario) {
-  const ids = (scenario.testCases || []).map((c) => String(c.id || '').trim()).filter(Boolean);
-  if (!ids.length) return '';
-  if (ids.length === 1) return ids[0];
-
-  const suffix = /^(.*?)([a-z])$/i;
-  const parts = ids.map((id) => suffix.exec(id)).filter(Boolean);
-  const stem = parts.length === ids.length ? parts[0][1] : null;
-
-  if (stem && parts.every((p) => p[1] === stem)) {
-    return `${stem}${parts[0][2]}–${parts[parts.length - 1][2]}`;
-  }
-  return ids.join(', ');
-}
-
 function renderScenarios() {
   const enh = state.enhancement;
   if (!enh) return;
 
-  const columns = ['Test Case ID', 'S.No', 'Test Scenario', ...enh.extraColumns, 'Status'];
+  const columns = ['S.No', 'Test Scenario', ...enh.extraColumns, 'Status'];
   dom.scenarioHead.innerHTML = '';
   const headRow = document.createElement('tr');
   columns.forEach((name, idx) => {
     const th = document.createElement('th');
     th.textContent = name;
-    if (idx === 0) th.className = 'tcid';
-    if (idx === 1) th.className = 'sno';
+    if (idx === 0) th.className = 'sno';
     headRow.appendChild(th);
   });
   const actHead = document.createElement('th');
@@ -706,12 +682,6 @@ function renderScenarios() {
   // Every scenario gets its own row, numbered sequentially.
   rows.forEach((scenario) => {
     const tr = document.createElement('tr');
-
-    const tcid = document.createElement('td');
-    tcid.className = 'tcid';
-    tcid.textContent = testCaseId(scenario);
-    tr.appendChild(tcid);
-
     const sno = document.createElement('td');
     sno.className = 'sno';
     sno.textContent = scenario.sno;
