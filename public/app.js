@@ -1365,17 +1365,6 @@ async function toggleDocument(id, { startEditing = false, push = true } = {}) {
   }
 }
 
-function documentMeta(doc) {
-  return [
-    state.docTab === 'all' && doc.product ? productLabel(doc.product) : '',
-    doc.description,
-    doc.fileName,
-    doc.imageCount ? plural(doc.imageCount, 'screenshot') : '',
-    `Added ${formatDate(doc.createdAt)}`,
-    doc.editedAt ? `Edited ${formatDate(doc.editedAt)}` : '',
-  ].filter(Boolean).join('  ·  ');
-}
-
 function renderDocuments() {
   const term = state.docFilter.trim().toLowerCase();
   const inTab = documentsInTab(state.docTab);
@@ -1422,16 +1411,13 @@ function renderDocuments() {
       <span class="doc-card-main">
         <span class="doc-name-row">
           <span class="enh-name"></span>
-          <button type="button" class="icon-edit doc-edit-btn" aria-label="Edit"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false"><path d="M2 11.6V14h2.4l7.1-7.1-2.4-2.4L2 11.6z" fill="currentColor"/><path d="M14.6 4.1a.9.9 0 0 0 0-1.3l-1.4-1.4a.9.9 0 0 0-1.3 0l-1.1 1.1 2.7 2.7 1.1-1.1z" fill="currentColor"/></svg></button>
         </span>
-        <p class="enh-meta"></p>
       </span>
       <span class="enh-right">
         <span class="pill ghost"></span>
         <span class="chev"></span>
       </span>`;
     card.querySelector('.enh-name').textContent = doc.name;
-    card.querySelector('.enh-meta').textContent = documentMeta(doc);
     card.querySelector('.pill').textContent = KIND_LABEL[doc.kind] || doc.kind;
     card.querySelector('.chev').textContent = open ? '▾' : '▸';
     card.title = open ? 'Close document' : 'Open document';
@@ -1443,13 +1429,6 @@ function renderDocuments() {
         e.preventDefault();
         toggle();
       }
-    });
-
-    const editBtn = card.querySelector('.doc-edit-btn');
-    editBtn.title = 'Edit the title, product and content';
-    editBtn.addEventListener('click', (e) => {
-      e.stopPropagation();                       // never toggles the card
-      toggleDocument(doc.id, { startEditing: true });
     });
 
     wrap.appendChild(card);
