@@ -18,7 +18,21 @@ const { activeProvider, friendlyApiError } = require('./testcases');
 /* A turn is capped so one huge document cannot crowd out the question. */
 const MAX_QUESTION = 1000;
 const MAX_HISTORY = 8;
-const DOC_EXCERPT = 1200;
+/*
+ * How much of each write-up the model is given.
+ *
+ * These are the source material: a feature is specified in them, with the
+ * field names, the limits and the behaviours that make a scenario worth
+ * writing. At twelve hundred characters a twelve-thousand character write-up
+ * arrived as its first paragraph, and scenarios drafted from it could only be
+ * generic. The documents here come to forty thousand characters in total,
+ * which is a fraction of what the model can hold, so they go in whole.
+ *
+ * The budget is for the day there are two hundred of them: a write-up the
+ * question actually names is never cut, and the rest fill what is left.
+ */
+const DOC_EXCERPT = 14000;
+const DOC_BUDGET = 90000;
 const SCENARIO_CAP = 400;
 
 /** Open-ended questions need the model; the rest of the assistant still works. */
@@ -44,9 +58,16 @@ Rules:
 - If the answer is not in the context, say so plainly and suggest where the user
   might look instead. Never invent a scenario, a count, a document or a result.
 - Be exact with numbers. Count the rows in the context rather than estimating.
-- Keep answers short and factual: a sentence or two, or a short list. This is a
-  working tool, not a chat companion.
+- Answer the whole question. Where the context supports it, give the detail:
+  what the write-up actually states, which scenarios cover it, which do not,
+  and what follows from that. A question worth asking is worth more than a
+  sentence — but every sentence must earn its place. Do not pad, do not
+  restate the question, and do not close with an offer to help further.
+- Where a write-up is the source, say which one, and quote the part that
+  settles the matter rather than paraphrasing it away.
 - When you refer to a scenario, give its number and the enhancement it sits in.
+- If the context does not settle it, say so plainly and say what would —
+  a write-up that has not been uploaded, a scenario nobody has written.
 - Plain text only. No markdown headings, no code fences, no tables.`;
 
 const SYSTEM_DRAFT = `You are a senior QA engineer on CloudFuze, a cloud data
@@ -98,6 +119,16 @@ What to cover:
 Rules:
 - If the user states a limit, a behaviour or a rule, test exactly that. Do not
   soften it or invent a different one.
+- Where a write-up in the CONTEXT covers the feature — because the user named
+  it, or because it describes the same thing — draft from what it actually
+  states. Use its field names, its limits, its error messages, its screens,
+  its order of steps. A scenario that could have been written without reading
+  it is a wasted line: "Verify that the migration completes" says nothing that
+  the write-up does not already promise. Name the write-up you drew on in one
+  short line before the scenarios.
+- Where the write-up is silent on something a tester would need to know, write
+  the scenario anyway and mark it: put "(not stated in the write-up)" at the
+  end of the line, so the gap is visible rather than guessed over.
 - The CONTEXT below is the team's existing scenarios and write-ups. Match their
   wording and level of detail, and do not repeat a scenario already there.
 - 12 to 20 scenarios unless the feature is small.
@@ -129,7 +160,12 @@ function statusOf(scenario) {
  * Everything in the tool, flattened into text the model can read.
  * Built fresh per question so the answers track the current data.
  */
-async function buildContext() {
+/**
+ * Everything the tool holds, as text for the model.
+ * @param {string} [focus] the question being answered, so the write-up it
+ *   names can be put first and given in full.
+ */
+async function buildContext(focus = '') {
   const products = (await store.listProducts());
   const lines = [];
 
@@ -181,10 +217,18 @@ async function buildContext() {
   if (hidden) lines.push('', `(${hidden} further scenarios not listed here.)`);
 
   lines.push('', '=== ENHANCEMENT DOCUMENTS ===');
+  lines.push('The write-ups the team has uploaded. These specify how a feature is');
+  lines.push('meant to behave, and are the source for scenarios written about it.');
+
   const documents = await store.allDocuments();
   if (!documents.length) lines.push('No documents uploaded.');
 
-  documents.forEach((doc) => {
+  /* The write-up the question names goes first, and is never cut. */
+  const named = focus ? findDocument(String(focus).toLowerCase(), documents) : null;
+  const ordered = named ? [named, ...documents.filter((d) => d.id !== named.id)] : documents;
+
+  let spent = 0;
+  ordered.forEach((doc) => {
     const product = products.find((p) => p.key === doc.product);
     const text = toPlainText(doc.html);
     lines.push('');
@@ -192,9 +236,20 @@ async function buildContext() {
       `"${doc.name}" — ${product ? product.label : 'unassigned'}, file ${doc.fileName}, ` +
         `${doc.imageCount || 0} screenshots, added ${doc.createdAt}`
     );
-    if (text) {
-      lines.push(`  ${text.slice(0, DOC_EXCERPT)}${text.length > DOC_EXCERPT ? ' …(truncated)' : ''}`);
+    if (!text) return;
+
+    const room = doc === named
+      ? DOC_EXCERPT
+      : Math.min(DOC_EXCERPT, Math.max(0, DOC_BUDGET - spent));
+
+    if (!room) {
+      lines.push('  (not included here — ask about this write-up by name to read it)');
+      return;
     }
+
+    const shown = text.slice(0, room);
+    spent += shown.length;
+    lines.push(`  ${shown}${text.length > shown.length ? ' …(truncated)' : ''}`);
   });
 
   return lines.join('\n');
@@ -428,7 +483,7 @@ const DRAFT_VERBS = /\b(write|generate|create|draft|prepare|suggest|compose|prov
  * but only the first wants the list. Replaying it for the second is how the
  * assistant ends up answering two different questions the same way.
  */
-const REASONING = /\b(why|reason|reasons|cause|caused|causing|explain|explanation|how come|what makes|root cause)\b/;
+const REASONING = /\b(why|reason|reasons|cause|caused|causing|explain|explanation|how come|what makes|root cause)\b/i;
 
 /**
  * Leaning on the previous turn to say what it is about.
@@ -436,7 +491,24 @@ const REASONING = /\b(why|reason|reasons|cause|caused|causing|explain|explanatio
  * The canned answers see one message at a time, so "those scenarios" means
  * nothing to them; the model is given the recent turns and can resolve it.
  */
-const REFERS_BACK = /\b(those|these|them|they|that one|the ones|above|previous|last answer)\b/;
+const REFERS_BACK = /\b(those|these|them|they|that one|the ones|above|previous|last answer)\b/i;
+
+/*
+ * Asking what something says, covers or amounts to.
+ *
+ * The write-ups run to twelve thousand characters. A question about what one
+ * of them says needs the part that settles it, not the paragraph it happens
+ * to open with, so these go to the model with the write-ups in front of it.
+ */
+const ASKS_FOR_AN_ACCOUNT = new RegExp(
+  [
+    '\\b(?:describe|summaris\\w+|summariz\\w+|elaborate|in detail|walk me through|tell me about)\\b',
+    '\\bwhat (?:does|do|did)\\b[\\s\\S]{0,60}\\b(?:say|says|state|states|cover|covers|mean|means|include)\\b',
+    '\\bwhat(?:\\u2019s| is|\\`s)\\b[\\s\\S]{0,60}\\babout\\b',
+    '\\bhow (?:does|do|is|are|should)\\b[\\s\\S]{0,80}\\b(?:work|works|handled|migrated|behave|behaves)\\b',
+  ].join('|'),
+  'i'
+);
 
 function needsContext(q, history) {
   // "why did these fail" is answered from the store: it knows whether a
@@ -444,6 +516,8 @@ function needsContext(q, history) {
   if (REASONING.test(q) && /\bfail/.test(q)) return false;
 
   if (REASONING.test(q)) return true;
+  if (ASKS_FOR_AN_ACCOUNT.test(q)) return true;
+
   return Boolean(history && history.length) && REFERS_BACK.test(q);
 }
 
@@ -1343,7 +1417,7 @@ async function askAssistant({
     .slice(-MAX_HISTORY)
     .map((m) => ({ role: m.role, content: m.content.slice(0, MAX_QUESTION) }));
 
-  const context = (await buildContext()) + attachmentContext(fileText);
+  const context = (await buildContext(text)) + attachmentContext(fileText);
   // a drafting request only reaches here when no write-up covered the feature
   const system = scenarioFallback(text) ? SYSTEM_DRAFT : SYSTEM;
 
