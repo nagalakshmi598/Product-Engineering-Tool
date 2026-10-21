@@ -1980,6 +1980,94 @@ el('botInput').addEventListener('paste', (event) => {
   }
 });
 
+/* ---------------- dictating a question ----------------
+   The browser does the listening and the transcribing, so nothing is
+   recorded, nothing is uploaded, and it costs nothing. The words land in the
+   box rather than being sent: dictation mishears, and a question worth asking
+   is worth a glance before it goes.
+
+   Chrome and Edge have this; Firefox does not. Where it is absent the control
+   is not shown at all, rather than offered and then apologised for. */
+
+const Dictation = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+const voice = {
+  session: null,     // the live SpeechRecognition, while it is listening
+  settled: '',       // what the box held before dictation began
+};
+
+function stopDictating() {
+  if (!voice.session) return;
+  const session = voice.session;
+  voice.session = null;
+  try { session.stop(); } catch (err) { /* already stopped */ }
+
+  el('botVoice').classList.remove('is-listening');
+  el('botVoice').setAttribute('aria-pressed', 'false');
+  el('botVoice').title = 'Dictate your question';
+}
+
+function startDictating() {
+  if (voice.session) { stopDictating(); return; }
+
+  const session = new Dictation();
+  session.lang = document.documentElement.lang || 'en-US';
+  session.continuous = true;      // a feature takes more than one sentence to describe
+  session.interimResults = true;  // the words appear as they are said
+
+  /* Whatever was typed already is kept; dictation adds to it. */
+  voice.settled = el('botInput').value.trim();
+
+  session.addEventListener('result', (event) => {
+    let heard = '';
+    for (let i = event.resultIndex; i < event.results.length; i += 1) {
+      heard += event.results[i][0].transcript;
+    }
+    heard = heard.trim();
+    if (!heard) return;
+
+    const joined = voice.settled ? `${voice.settled} ${heard}` : heard;
+    el('botInput').value = joined.slice(0, 1000);
+
+    /* A final result is banked, so the next phrase appends rather than
+       replacing it. */
+    if (event.results[event.results.length - 1].isFinal) {
+      voice.settled = el('botInput').value.trim();
+    }
+  });
+
+  session.addEventListener('error', (event) => {
+    stopDictating();
+    if (event.error === 'no-speech' || event.error === 'aborted') return;
+    toast(event.error === 'not-allowed'
+      ? 'The microphone is blocked. Allow it for this page in the address bar, then try again.'
+      : `Dictation stopped: ${event.error}`, true);
+  });
+
+  session.addEventListener('end', stopDictating);
+
+  try {
+    session.start();
+  } catch (err) {
+    toast('Dictation could not start.', true);
+    return;
+  }
+
+  voice.session = session;
+  el('botVoice').classList.add('is-listening');
+  el('botVoice').setAttribute('aria-pressed', 'true');
+  el('botVoice').title = 'Stop dictating';
+  el('botInput').focus();
+}
+
+if (Dictation) {
+  el('botVoice').hidden = false;
+  el('botVoice').addEventListener('click', startDictating);
+  // sending, or closing the panel, ends the listening
+  el('botForm').addEventListener('submit', stopDictating);
+  el('botClose').addEventListener('click', stopDictating);
+}
+
 /* ---------------- changes asked for in the chat ----------------
    The tool has no delete buttons: everything that changes the scenarios is
    asked for here. A delete is read back first and waits to be agreed, since

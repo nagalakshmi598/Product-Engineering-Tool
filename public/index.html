@@ -196,6 +196,12 @@
       </button>
       <input id="botFiles" type="file" multiple hidden
              aria-label="Files to attach" />
+      <button id="botVoice" class="bot-voice" type="button" hidden
+              aria-label="Dictate your question" aria-pressed="false" title="Dictate your question">
+        <span class="wave" aria-hidden="true">
+          <i></i><i></i><i></i><i></i><i></i>
+        </span>
+      </button>
       <input id="botInput" class="bot-input" type="text" maxlength="1000" autocomplete="off"
              placeholder="Ask, or describe a feature — attach screenshots too" aria-label="Your question" />
       <button id="botSend" class="bot-send" type="submit" aria-label="Send">

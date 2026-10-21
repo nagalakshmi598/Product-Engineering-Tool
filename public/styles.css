@@ -799,6 +799,48 @@ body {
 
 .btn-sm { padding: 5px 12px; font-size: 12.5px; }
 
+/* ---------------- dictating a question ----------------
+   Five bars, not a microphone. Every assistant draws the same capsule, and
+   a capsule cannot show that it is listening; bars can, and do. */
+.bot-voice {
+  display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px;
+  background: none; border: none; border-radius: 50%;
+  color: var(--muted); cursor: pointer;
+  transition: background .14s var(--ease), color .14s var(--ease);
+}
+.bot-voice:hover { background: var(--blue-tint); color: var(--cf-color-primary); }
+.bot-voice:focus-visible { outline: 2px solid var(--blue-mid); outline-offset: 2px; }
+
+.wave { display: flex; align-items: center; gap: 2px; height: 16px; }
+.wave i {
+  display: block; width: 2.5px; border-radius: 2px;
+  background: currentColor;
+}
+/* at rest the bars hold a shape, so the control reads as sound, not a loader */
+.wave i:nth-child(1) { height: 5px; }
+.wave i:nth-child(2) { height: 10px; }
+.wave i:nth-child(3) { height: 15px; }
+.wave i:nth-child(4) { height: 9px; }
+.wave i:nth-child(5) { height: 5px; }
+
+.bot-voice.is-listening { background: var(--danger-bg); color: var(--danger); }
+.bot-voice.is-listening .wave i { animation: wave-speak .9s ease-in-out infinite; }
+.bot-voice.is-listening .wave i:nth-child(2) { animation-delay: .12s; }
+.bot-voice.is-listening .wave i:nth-child(3) { animation-delay: .24s; }
+.bot-voice.is-listening .wave i:nth-child(4) { animation-delay: .36s; }
+.bot-voice.is-listening .wave i:nth-child(5) { animation-delay: .48s; }
+
+@keyframes wave-speak {
+  0%, 100% { height: 4px; }
+  50%      { height: 16px; }
+}
+
+/* someone who would rather the screen stayed still */
+@media (prefers-reduced-motion: reduce) {
+  .bot-voice.is-listening .wave i { animation: none; }
+  .bot-voice.is-listening .wave i:nth-child(odd) { height: 15px; }
+}
+
 /* ---------- empty state ---------- */
 .empty {
   border: 1px dashed var(--border-strong); background: var(--white); border-radius: var(--radius);
