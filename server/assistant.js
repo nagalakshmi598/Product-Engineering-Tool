@@ -1576,8 +1576,21 @@ async function askAssistant({
      a sheet of scenarios — so the local answerers, which cannot see it, step
      aside and the model takes the turn. */
   const files = Array.isArray(attachments) ? attachments : [];
-  const images = files.filter((f) => f.image);
   const fileText = files.filter((f) => f.text);
+
+  /* A recording arrives already taken apart: the screens where something
+     changed, in order, each knowing the second it came from. They go to the
+     model as pictures, because that is what they are. */
+  const images = files.flatMap((f) => {
+    if (f.image) return [f];
+    if (!f.frames) return [];
+
+    return f.frames.map((frame) => ({
+      name: `${f.name} at ${Math.floor(frame.at / 60)}:${String(frame.at % 60).padStart(2, '0')}`,
+      image: frame.image,
+      mime: frame.mime,
+    }));
+  });
 
   /* Structured questions are answered from the store: exact, instant, and
      independent of any API key or its billing state. A question that asks for
@@ -1594,8 +1607,15 @@ async function askAssistant({
     }
   }
 
-  const drafting = Boolean(scenarioFallback(text))
-    || (files.length > 0 && isDraftRequest(text.toLowerCase()));
+  /* Describing something is not asking for checks on it. "Describe each
+     screen this recording goes through" wants the screens described, and
+     answering with eight edge cases nobody asked for answers a different
+     question — so an account asked for is an account given, attachment or
+     no attachment. */
+  const wantsAnAccount = ASKS_FOR_AN_ACCOUNT.test(text) || REASONING.test(text);
+
+  const drafting = !wantsAnAccount
+    && (Boolean(scenarioFallback(text)) || (files.length > 0 && isDraftRequest(text.toLowerCase())));
 
   const { provider, model, ready } = activeProvider();
   if (!ready) {
@@ -1612,7 +1632,8 @@ async function askAssistant({
 
   const context = (await buildContext(text)) + attachmentContext(fileText);
   // a drafting request only reaches here when no write-up covered the feature
-  const system = scenarioFallback(text) ? SYSTEM_DRAFT : SYSTEM;
+  // briefed to draft only when drafting is what was asked for
+  const system = drafting ? SYSTEM_DRAFT : SYSTEM;
 
   /* A question about the whole shelf is answered a shelf at a time. */
   if (drafting && wantsEveryWriteUp(text)) {

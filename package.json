@@ -11,6 +11,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",
     "express": "^4.19.2",
+    "ffmpeg-static": "^5.3.0",
     "mammoth": "^1.12.2",
     "mongodb": "^7.6.0",
     "multer": "^2.3.0",

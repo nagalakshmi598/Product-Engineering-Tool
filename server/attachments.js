@@ -15,6 +15,7 @@
 
 const path = require('path');
 const mammoth = require('mammoth');
+const { framesFrom } = require('./video');
 const { parseCsv } = require('./parse');
 
 /*
@@ -102,13 +103,28 @@ async function readAttachment(file) {
   /* A screen recording is kept in the tool and can be watched there, but
      nothing here can see it: no frame reaches the model, and a scenario
      written as though one had would be invention. Say so instead. */
+  /* A recording is watched by taking it apart: the screens where something
+     changed become a strip of stills, and those are read the way any other
+     screenshot is. Nothing streams a video to a model. */
   if (VIDEO_EXT.has(ext)) {
-    return {
-      name,
-      kind: 'video',
-      note: 'kept in the tool, but its contents cannot be read here — '
-        + 'describe what it shows, or attach the write-up, and the scenarios will follow that',
-    };
+    try {
+      const { frames, seconds, note } = await framesFrom(file.buffer, name);
+      if (!frames.length) return { name, kind: 'skipped', note };
+
+      return {
+        name,
+        kind: 'video',
+        seconds,
+        frames: frames.map((frame) => ({
+          at: frame.at,
+          image: frame.image.toString('base64'),
+          mime: 'image/jpeg',
+        })),
+        note,
+      };
+    } catch (err) {
+      return { name, kind: 'skipped', note: `this recording could not be read: ${err.message}` };
+    }
   }
 
   if (IMAGE_EXT.has(ext)) {
