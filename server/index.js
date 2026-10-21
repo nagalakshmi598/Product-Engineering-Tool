@@ -877,6 +877,39 @@ app.post('/api/assistant/command', wrap(async (req, res) => {
     });
   }
 
+  if (command.kind === 'clear-column') {
+    /* The column is named the way it is spoken — "section" — and the table
+       calls it "Section", so the match is made on the tool's own spelling. */
+    const held = target.extraColumns || [];
+    const column = held.find((c) => c.toLowerCase() === String(command.column).toLowerCase());
+
+    if (!column) {
+      return res.status(404).json({
+        error: held.length
+          ? `"${target.name}" has no ${command.column} column. It has: ${held.join(', ')}.`
+          : `"${target.name}" has no extra columns.`,
+      });
+    }
+
+    const rows = (target.scenarios || []).map((row) => {
+      const extra = { ...(row.extra || {}) };
+      delete extra[column];
+      return { ...row, extra };
+    });
+
+    const updated = await store.setScenarios(target.id, {
+      scenarios: rows,
+      extraColumns: held.filter((c) => c !== column),
+      sourceFile: target.sourceFile,
+      mode: 'replace',
+    });
+
+    return res.json({
+      done: `The ${column} column is gone from "${target.name}" — ${plural(rows.length, 'row')} cleared.`,
+      enhancement: store.summary(updated),
+    });
+  }
+
   if (command.kind === 'delete-scenarios') {
     /* Taken from the highest number down: removing a row renumbers the ones
        after it, so working upwards would delete the wrong rows. */

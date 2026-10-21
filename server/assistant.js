@@ -1224,8 +1224,12 @@ function parseDraft(answer) {
     const listed = line.match(DRAFT_LINE);
     const bare = !listed && OPENS_A_SCENARIO.test(line);
     if (!listed && !bare) {
-      // a short line that is not a sentence is a heading for what follows
-      if (line.length <= 60 && !/[.!?]$/.test(line) && !/^[-*\u2022]/.test(line)) {
+      /* A short line that is not a sentence is a heading for what follows \u2014
+         unless it is one of the markers that divide the context given to the
+         model. A draft that echoed "=== ENHANCEMENTS AND THEIR TEST SCENARIOS
+         ===" back put that on eighty-six rows as their section. */
+      if (line.length <= 60 && !/[.!?]$/.test(line) && !/^[-*\u2022]/.test(line)
+          && !/^=+/.test(line) && !/=$/.test(line)) {
         section = line.replace(/^[\[(]?\s*(?:positive|negative|edge)\s*[\])]?\s*[:\-]?\s*/i, '').replace(/[:\s]+$/, '');
       }
       return;

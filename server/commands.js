@@ -76,6 +76,11 @@ function tidyLabel(text) {
 /* The write-ups are managed from here too, so a pattern has to know when an
    instruction is about one rather than about a set of scenarios. */
 const A_DOCUMENT = '(?:documents?|docs?|write-?ups?|files?)';
+
+/* The columns of the scenario table. These name a part of what is on screen,
+   never a set of scenarios, so "remove that section" empties a column — it
+   does not delete eighty-six rows. */
+const A_COLUMN = 'section|type|status|s\\.?\\s*no|serial|source';
 const NAMED = '["\'“]?(.+?)["\'”]?';
 
 const PATTERNS = [
@@ -152,6 +157,19 @@ const PATTERNS = [
     read: (m) => ({ name: m[1] ? namedOrOpen(m[1]) : null, to: tidyName(m[2]) }),
   },
 
+  /* empty the Section column — before the catch-all below, which would read
+     "remove that section" as the name of a set and delete it */
+  {
+    kind: 'clear-column',
+    re: new RegExp(
+      '\\b(?:remove|clear|delete|drop|empty)\\s+(?:the\\s+|that\\s+|this\\s+)?'
+        + `(${A_COLUMN})\\s*(?:column|values?|field)?`
+        + '(?:\\s+(?:from|on|in|for)\\s+(?:all\\s+)?(?:the\\s+)?(?:scenarios?|rows?|table|set))?\\s*$',
+      'i'
+    ),
+    read: (m) => ({ column: tidyLabel(m[1]) }),
+  },
+
   /* delete the DIY Tool Test Scenarios set — last, so it does not swallow the
      narrower deletes above */
   {
@@ -163,7 +181,7 @@ const PATTERNS = [
 
 /* Deleting is the one that cannot be taken back, so it is put to the person
    before it happens. The rest are a click to undo and are simply done. */
-const NEEDS_CONFIRMING = new Set(['delete-set', 'delete-scenarios', 'delete-document']);
+const NEEDS_CONFIRMING = new Set(['delete-set', 'delete-scenarios', 'delete-document', 'clear-column']);
 
 /**
  * Read a message as an instruction to change something.
@@ -199,6 +217,7 @@ function parseCommand(question) {
        lists fifteen of them. */
     if (read.object === 'document' && (!read.name || read.name.length < 3)) continue;
     if (/^(?:rename|move)-document$/.test(pattern.kind) && !read.to) continue;
+    if (pattern.kind === 'clear-column' && !read.column) continue;
 
     return { kind: pattern.kind, confirm: NEEDS_CONFIRMING.has(pattern.kind), ...read };
   }
@@ -224,6 +243,8 @@ function describeCommand(command, context = {}) {
       return `Rename the write-up "${command.name}" to "${command.to}".`;
     case 'move-document':
       return `File the write-up "${command.name}" under ${command.to}.`;
+    case 'clear-column':
+      return `Empty the ${command.column} column${where}, on every row. This cannot be undone.`;
     case 'rename-set':
       return `Rename "${command.name || context.enhancementName}" to "${command.to}".`;
     case 'delete-set':

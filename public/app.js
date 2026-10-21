@@ -2174,6 +2174,8 @@ function describeChosen(command, target) {
       return `Rename the write-up "${target.name}" to "${command.to}".`;
     case 'move-document':
       return `File the write-up "${target.name}" under ${command.to}.`;
+    case 'clear-column':
+      return `Empty the ${command.column} column in "${target.name}", on every row. This cannot be undone.`;
     case 'delete-set':
       return `Delete "${target.name}" and every scenario in it. This cannot be undone.`;
     case 'delete-scenarios':
@@ -2197,7 +2199,8 @@ function askToConfirm(command, target) {
   const go = document.createElement('button');
   go.type = 'button';
   go.className = 'bot-action is-danger';
-  go.textContent = 'Yes, delete';
+  // the button says what it is about to do, which is not always a delete
+  go.textContent = command.kind === 'clear-column' ? 'Yes, empty it' : 'Yes, delete';
 
   const stop = document.createElement('button');
   stop.type = 'button';
