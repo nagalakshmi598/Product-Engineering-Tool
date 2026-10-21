@@ -845,22 +845,6 @@ body {
 .bot-choices { flex-direction: column; align-items: stretch; }
 .bot-choices .bot-action { text-align: left; }
 
-/* the bin on a write-up's card, and the question it asks */
-.doc-bin {
-  display: grid; place-items: center; width: 28px; height: 28px;
-  background: none; border: none; border-radius: var(--cf-radius-sm);
-  color: var(--border-strong); cursor: pointer;
-  transition: color .14s var(--ease), background .14s var(--ease);
-}
-.doc-card:hover .doc-bin { color: var(--muted); }
-.doc-bin:hover { background: var(--danger-bg); color: var(--danger); }
-.doc-bin:focus-visible { outline: 2px solid var(--blue-mid); outline-offset: 2px; }
-
-.doc-confirm { display: inline-flex; align-items: center; gap: 8px; }
-.doc-confirm-text { font-size: 12.5px; font-weight: 600; color: var(--danger); white-space: nowrap; }
-.doc-confirm-yes { background: var(--danger); border-color: var(--danger); color: var(--white); }
-.doc-confirm-yes:hover { background: #a31f1f; border-color: #a31f1f; }
-
 /* ---------- empty state ---------- */
 .empty {
   border: 1px dashed var(--border-strong); background: var(--white); border-radius: var(--radius);
