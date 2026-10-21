@@ -1365,6 +1365,75 @@ async function toggleDocument(id, { startEditing = false, push = true } = {}) {
   }
 }
 
+/**
+ * Ask on the card, then delete.
+ *
+ * The right-hand side of the row becomes the question, so the answer is given
+ * where the question was asked and the list does not move underneath it.
+ */
+function askBeforeDeletingDocument(card, doc) {
+  const right = card.querySelector('.enh-right');
+  if (right.querySelector('.doc-confirm')) return;        // already asking
+
+  const held = right.innerHTML;
+  right.innerHTML = '';
+
+  const asking = document.createElement('span');
+  asking.className = 'doc-confirm';
+
+  const question = document.createElement('span');
+  question.className = 'doc-confirm-text';
+  question.textContent = 'Delete this write-up?';
+  asking.appendChild(question);
+
+  const yes = document.createElement('button');
+  yes.type = 'button';
+  yes.className = 'btn btn-sm doc-confirm-yes';
+  yes.textContent = 'Delete';
+
+  const no = document.createElement('button');
+  no.type = 'button';
+  no.className = 'btn btn-outline btn-sm';
+  no.textContent = 'Cancel';
+
+  const restore = () => { right.innerHTML = held; wire(); };
+
+  /* The buttons are rebuilt with the row, so the bin is wired up again. */
+  function wire() {
+    const bin = right.querySelector('.doc-bin');
+    if (!bin) return;
+    bin.addEventListener('click', (event) => {
+      event.stopPropagation();
+      askBeforeDeletingDocument(card, doc);
+    });
+  }
+
+  yes.addEventListener('click', async (event) => {
+    event.stopPropagation();
+    yes.disabled = true;
+    no.disabled = true;
+    question.textContent = 'Deleting\u2026';
+
+    try {
+      await api(`/api/documents/${doc.id}`, { method: 'DELETE' });
+      toast(`"${doc.name}" deleted.`);
+      await openDocuments({ product: state.docTab === 'all' ? null : state.docTab, push: false });
+    } catch (err) {
+      restore();
+      toast(err.message, true);
+    }
+  });
+
+  no.addEventListener('click', (event) => {
+    event.stopPropagation();
+    restore();
+  });
+
+  asking.appendChild(yes);
+  asking.appendChild(no);
+  right.appendChild(asking);
+}
+
 function renderDocuments() {
   const term = state.docFilter.trim().toLowerCase();
   const inTab = documentsInTab(state.docTab);
@@ -1415,11 +1484,22 @@ function renderDocuments() {
       </span>
       <span class="enh-right">
         <span class="pill ghost"></span>
+        <button type="button" class="doc-bin" aria-label="Delete this write-up" title="Delete this write-up">
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><path d="M3 4.4h10M6.4 4.4V3.2a.8.8 0 0 1 .8-.8h1.6a.8.8 0 0 1 .8.8v1.2M4.4 4.4l.5 8a1 1 0 0 0 1 .95h4.2a1 1 0 0 0 1-.95l.5-8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
         <span class="chev"></span>
       </span>`;
     card.querySelector('.enh-name').textContent = doc.name;
     card.querySelector('.pill').textContent = KIND_LABEL[doc.kind] || doc.kind;
     card.querySelector('.chev').textContent = open ? '▾' : '▸';
+
+    /* Deleting takes the write-up, its stored file and its screenshots, and
+       there is no undo — so the bin asks on the card itself rather than
+       opening a dialog over the list. */
+    card.querySelector('.doc-bin').addEventListener('click', (event) => {
+      event.stopPropagation();                   // never opens the document
+      askBeforeDeletingDocument(card, doc);
+    });
     card.title = open ? 'Close document' : 'Open document';
 
     const toggle = () => toggleDocument(doc.id);
