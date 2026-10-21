@@ -16,7 +16,7 @@ const { extractScenarios } = require('./parse');
  * one of those should stay the scenario it is.
  */
 const LABELLED_SHEETS = new Set(['diy']);
-const { askAssistant } = require('./assistant');
+const { askAssistant, guessProduct } = require('./assistant');
 const attachments = require('./attachments');
 const { parseCommand, describeCommand } = require('./commands');
 const { generateTestCases, hasApiKey, activeProvider, keyProblem } = require('./testcases');
@@ -796,6 +796,48 @@ app.post('/api/assistant/command', wrap(async (req, res) => {
   return res.status(400).json({ error: 'I do not know how to do that yet.' });
 }));
 
+/* ---------------- write-ups dropped into the chat ----------------
+   A screenshot attached to a message is context for that message and nothing
+   more. A write-up is not: it is the specification of a feature, worth
+   keeping and worth asking about next week. One arriving in the chat is
+   filed under Documents, exactly as the upload dialog would file it. */
+
+const WRITE_UP = new Set(['.docx', '.pdf', '.md', '.txt']);
+
+/** Attached files worth keeping, in the order they arrived. */
+function writeUpsAmong(files) {
+  return (files || []).filter((f) => WRITE_UP.has(path.extname(decodeFileName(f.originalname) || '').toLowerCase()));
+}
+
+/**
+ * File the write-ups attached to a message.
+ *
+ * A write-up sent again replaces the one already held rather than sitting
+ * beside it: the second copy of a specification is how a team ends up testing
+ * against the wrong one.
+ */
+async function keepWriteUps(files, { product }) {
+  const kept = [];
+
+  for (const file of writeUpsAmong(files)) {
+    const fileName = decodeFileName(file.originalname);
+    const name = path.basename(fileName, path.extname(fileName));
+
+    const existing = (await store.allDocuments()).find((d) => d.fileName === fileName);
+    if (existing) {
+      const ingested = await ingestDocument({ id: existing.id, buffer: file.buffer, originalName: fileName });
+      const updated = await store.updateDocument(existing.id, { html: ingested.html });
+      kept.push({ ...store.documentSummary(updated), replaced: true });
+      continue;
+    }
+
+    const doc = await storeDocument({ name, description: '', product: product || '', file });
+    kept.push({ ...store.documentSummary(doc), replaced: false });
+  }
+
+  return kept;
+}
+
 const chatUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: attachments.MAX_BYTES, files: attachments.MAX_FILES },
@@ -831,6 +873,12 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
     });
   }
 
+  /* Filed before the answer is composed, so the write-up is in the context
+     the scenarios are drafted from. */
+  const filed = await keepWriteUps(req.files, {
+    product: guessProduct(String(question || ''), (open && open.product) || currentProduct),
+  });
+
   const read = await attachments.readAll(req.files);
   const result = await askAssistant({
     question,
@@ -843,6 +891,7 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
   res.json({
     ...result,
     attachments: read.map(({ name, kind, note }) => ({ name, kind, note })),
+    documents: filed,
   });
 }));
 

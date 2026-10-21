@@ -2247,6 +2247,15 @@ async function askBot(question) {
       .filter((a) => a.kind === 'skipped')
       .forEach((a) => botBubble('bot', `📎 ${a.name} — ${a.note}`, 'is-error'));
 
+    /* A write-up attached to the message has been kept, not just read. */
+    (result.documents || []).forEach((doc) => {
+      botBubble('bot', doc.replaced
+        ? `"${doc.name}" updated under ${productLabel(doc.product)} documents.`
+        : `"${doc.name}" filed under ${productLabel(doc.product)} documents.`);
+    });
+
+    if (result.documents && result.documents.length) await loadProducts();
+
     botBubble('bot', result.answer);
 
     if (result.command) {
