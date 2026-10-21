@@ -596,7 +596,12 @@ async function enhancementFor(product, name) {
     if (score > bestScore) { best = candidate; bestScore = score; }
   });
 
-  return bestScore >= 0.6 ? store.getEnhancement(best.id) : null;
+  /* Write-ups are named to a pattern — "Dropbox - Content Sprawl Scope",
+     "Egnyte - Content Sprawl Scope" — and three words of five in common put
+     every cloud's set at exactly 0.60, so they collapsed into one another.
+     A genuine restatement of the same name scores 1.00. The bar sits above
+     the pattern and below the restatement. */
+  return bestScore >= 0.75 ? store.getEnhancement(best.id) : null;
 }
 
 app.post('/api/assistant/scenarios', wrap(async (req, res) => {

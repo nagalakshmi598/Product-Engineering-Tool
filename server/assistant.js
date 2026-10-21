@@ -1454,7 +1454,8 @@ function wantsEveryWriteUp(q) {
 
 /** The write-ups a question is about: a product's, or all of them. */
 async function writeUpsInScope(question, currentProduct) {
-  const all = (await store.allDocuments()).filter((d) => toPlainText(d.html).trim().length > 200);
+  // enough text to specify something; a title page or a screenshot is not
+  const all = (await store.allDocuments()).filter((d) => toPlainText(d.html).trim().length > 120);
   const product = findProduct(String(question).toLowerCase(), await store.listProducts());
   const key = product ? product.key : currentProduct;
 
@@ -1469,9 +1470,9 @@ async function writeUpsInScope(question, currentProduct) {
  * the one that failed is named, so it can be asked for again on its own.
  */
 async function draftPerWriteUp(documents, { provider, model, history, system, question }) {
-  const all = [];
-  const covered = [];
+  const sets = [];
   const refused = [];
+  let total = 0;
 
   for (const doc of documents) {
     const text = toPlainText(doc.html);
@@ -1493,18 +1494,28 @@ async function draftPerWriteUp(documents, { provider, model, history, system, qu
       const rows = parseDraft(String(answer || ''));
       if (!rows.length) { refused.push(doc.name); continue; }
 
-      rows.forEach((row) => {
-        all.push({ ...row, section: row.section && row.section.includes(doc.name)
-          ? row.section
-          : `${doc.name}${row.section ? ` — ${row.section}` : ''}` });
+      /* Within its own set the write-up's name is on the card, so the section
+         keeps whatever the draft called it. Combined into one, the name is
+         put in front, because otherwise nothing says which write-up a row
+         came from. */
+      sets.push({
+        name: doc.name,
+        scenarios: rows.map((row) => ({ ...row, section: row.section || doc.name })),
       });
-      covered.push({ name: doc.name, count: rows.length });
+      total += rows.length;
     } catch (err) {
       refused.push(doc.name);
     }
   }
 
-  return { scenarios: all, covered, refused };
+  return { sets, refused, total };
+}
+
+/* Asked for the lot in one set rather than one set each. */
+const TOGETHER = /\b(?:in|as|into)\s+(?:a\s+|one\s+|the\s+)?(?:single|one|same)\s+(?:set|list|enhancement)\b|\btogether\b|\bcombined?\b|\ball in one\b/i;
+
+function wantsThemTogether(q) {
+  return TOGETHER.test(String(q || ''));
 }
 
 async function askAssistant({
@@ -1573,23 +1584,56 @@ async function askAssistant({
     const shelf = await writeUpsInScope(text, currentProduct);
 
     if (shelf.length > 1) {
-      const { scenarios, covered, refused } = await draftPerWriteUp(shelf, {
+      const perDoc = await draftPerWriteUp(shelf, {
         provider, model, history: trimmed, system: SYSTEM_DRAFT, question: text,
       });
 
-      if (scenarios.length) {
-        const lines = [
-          `${plural(scenarios.length, 'scenario')} across ${plural(covered.length, 'write-up')}:`,
-          '',
-          ...covered.map((c) => `  ${c.name} — ${plural(c.count, 'scenario')}`),
-        ];
-        if (refused.length) {
-          lines.push('', `Nothing came back for: ${refused.join(', ')}. Ask for those on their own.`);
-        }
-        lines.push('', ...scenarios.map((s, i) => `${i + 1}. [${s.type}] ${s.scenario}`));
+      if (perDoc.sets.length) {
+        const product = openEnhancement ? openEnhancement.product : guessProduct(text, currentProduct);
 
-        const label = (await store.listProducts())
-          .find((p) => p.key === guessProduct(text, currentProduct));
+        /* One set per write-up, which is what the Documents page already
+           looks like and what anyone reading the results needs. Three
+           hundred and sixty-five scenarios in a single set, named after no
+           feature in particular, is a list nobody can work from.
+
+           Asked for them together — "in one set", "combined" — they are
+           combined instead. */
+        if (!wantsThemTogether(text) && !openEnhancement) {
+          const lines = [
+            `${plural(perDoc.total, 'scenario')} across ${plural(perDoc.sets.length, 'write-up')}, `
+              + 'each filed under its own name:',
+            '',
+            ...perDoc.sets.map((s) => `  ${s.name} — ${plural(s.scenarios.length, 'scenario')}`),
+          ];
+          if (perDoc.refused.length) {
+            lines.push('', `Nothing came back for: ${perDoc.refused.join(', ')}. Ask for those on their own.`);
+          }
+
+          return {
+            answer: lines.join('\n'),
+            model,
+            provider,
+            drafts: perDoc.sets.map((set) => ({
+              feature: set.name,
+              name: set.name,
+              product,
+              enhancementId: null,
+              scenarios: set.scenarios,
+              save: wantsSaved(text),
+            })),
+          };
+        }
+
+        /* Together, then: one set with the write-up's name on each section. */
+        const everything = perDoc.sets.flatMap((s) => s.scenarios);
+        const label = (await store.listProducts()).find((p) => p.key === product);
+        const lines = [
+          `${plural(everything.length, 'scenario')} across ${plural(perDoc.sets.length, 'write-up')}:`,
+          '',
+          ...perDoc.sets.map((s) => `  ${s.name} — ${plural(s.scenarios.length, 'scenario')}`),
+          '',
+          ...everything.map((s, i) => `${i + 1}. [${s.type}] ${s.scenario}`),
+        ];
 
         return {
           answer: lines.join('\n'),
@@ -1598,9 +1642,9 @@ async function askAssistant({
           draft: {
             feature: 'the uploaded write-ups',
             name: openEnhancement ? openEnhancement.name : `${label ? label.label : 'Uploaded'} write-ups`,
-            product: openEnhancement ? openEnhancement.product : guessProduct(text, currentProduct),
+            product,
             enhancementId: openEnhancement ? openEnhancement.id : null,
-            scenarios,
+            scenarios: everything,
             save: wantsSaved(text),
           },
         };

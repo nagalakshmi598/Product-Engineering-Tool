@@ -2231,6 +2231,69 @@ function downloadCsv(draft) {
 }
 
 /** Put the drafted rows into the tool, the same as uploading a sheet of them. */
+/**
+ * File a set of drafts, one per write-up.
+ *
+ * Nine write-ups make nine sets, each named after the one it came from, which
+ * is what the Documents page already looks like. They are saved one after
+ * another rather than all at once, so the page fills in as it goes and a
+ * failure on the fourth does not take the three before it with it.
+ *
+ * Test cases are not written for them here. Nine sets is several hundred
+ * scenarios and as many calls to the model; that is worth asking for
+ * deliberately, from Actions on whichever set is wanted first.
+ */
+async function saveDrafts(drafts) {
+  const row = document.createElement('div');
+  row.className = 'bot-actions';
+  const progress = document.createElement('span');
+  progress.className = 'bot-actions-note';
+  progress.textContent = `Filing ${plural(drafts.length, 'set')}…`;
+  row.appendChild(progress);
+  el('botLog').appendChild(row);
+
+  const done = [];
+  const failed = [];
+
+  for (let i = 0; i < drafts.length; i += 1) {
+    const draft = drafts[i];
+    progress.textContent = `Filing ${i + 1} of ${drafts.length} — ${draft.name}`;
+    el('botLog').scrollTop = el('botLog').scrollHeight;
+
+    try {
+      const result = await api('/api/assistant/scenarios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product: draft.product, name: draft.name, scenarios: draft.scenarios }),
+      });
+      done.push(result);
+    } catch (err) {
+      failed.push({ name: draft.name, why: err.message });
+    }
+  }
+
+  row.remove();
+
+  const total = done.reduce((n, r) => n + r.added, 0);
+  botBubble('bot', `${plural(total, 'scenario')} filed across ${plural(done.length, 'set')} under ${productLabel(drafts[0].product)}:`);
+
+  done.forEach((result) => {
+    botBubble('bot', `  ${result.enhancement.name} — ${plural(result.added, 'scenario')}`);
+  });
+
+  failed.forEach((f) => botBubble('bot', `${f.name} could not be filed: ${f.why}`, 'is-error'));
+
+  if (done.length) {
+    botBubble('bot', 'Their test cases are not written yet — that is several hundred, so open a set '
+      + 'and use Actions when you want them.');
+    botOpenLink(done[0].enhancement.id, done[0].enhancement.name);
+  }
+
+  await loadProducts();
+  if (state.view === 'enhancements' && state.product === drafts[0].product) await openProduct(state.product);
+  else if (state.view === 'dashboard') renderDashboard();
+}
+
 async function saveDraft(draft, button) {
   button.disabled = true;
   const previous = button.textContent;
@@ -2438,7 +2501,10 @@ async function askBot(question) {
       return;
     }
 
-    if (result.draft && result.draft.scenarios.length) {
+    /* One set per write-up, when the question spanned several of them. */
+    if (result.drafts && result.drafts.length) {
+      await saveDrafts(result.drafts);
+    } else if (result.draft && result.draft.scenarios.length) {
       // drafted scenarios belong in their product's page; put them there
       await saveDraft(result.draft, botDraftActions(result.draft));
     }
