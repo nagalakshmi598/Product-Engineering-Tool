@@ -129,6 +129,13 @@ Rules:
 - Where the write-up is silent on something a tester would need to know, write
   the scenario anyway and mark it: put "(not stated in the write-up)" at the
   end of the line, so the gap is visible rather than guessed over.
+- The write-up is what you read, never what you test. It is a Word file
+  describing how a migration behaves; the migration is the subject. Do not
+  write a scenario about opening it, viewing it, downloading it, uploading it,
+  its title, or whether it displays without errors. "Verify that the system
+  allows users to open the document titled X" tests this tool's document
+  viewer, which is not what anyone asked about. Every line must be about the
+  behaviour the write-up describes.
 - The CONTEXT below is the team's existing scenarios and write-ups. Match their
   wording and level of detail, and do not repeat a scenario already there.
 - 12 to 20 scenarios unless the feature is small.
@@ -1181,6 +1188,31 @@ function kindOf(text) {
   return 'Positive';
 }
 
+/*
+ * A scenario about the write-up rather than about what it describes.
+ *
+ * Given a specification to draft from, a model will occasionally test the
+ * specification: "Verify that the system allows users to open the document
+ * titled Outlook_Shared_Mailboxes_to_Google_Groups_Migration without errors."
+ * That tests this tool's document viewer. The write-up is what is read, never
+ * what is tested, and a line like it is dropped rather than filed.
+ *
+ * Narrow on purpose. "Verify that a document migrates with its permissions"
+ * is a real Content scenario and has to survive: the phrases below are about
+ * a write-up sitting in a tool, not about documents being migrated.
+ */
+const ABOUT_THE_WRITE_UP = [
+  /\b(?:the|this|a)\s+(?:document|write-?up|file)\s+(?:titled|named|called)\b/i,
+  /\b(?:open|view|download|upload|display|render)(?:s|ed|ing)?\s+(?:the|this)\s+(?:document|write-?up)\b/i,
+  /\bthis\s+write-?up\b/i,
+  /\b(?:document|write-?up)\s+(?:is\s+)?(?:displayed|opens|loads)\s+without\s+errors?\b/i,
+  /\b(?:uploaded|attached)\s+(?:document|write-?up|specification)\b/i,
+];
+
+function aboutTheWriteUp(text) {
+  return ABOUT_THE_WRITE_UP.some((pattern) => pattern.test(text));
+}
+
 function parseDraft(answer) {
   const rows = [];
   let section = '';
@@ -1214,6 +1246,9 @@ function parseDraft(answer) {
 
     if (text.length <= 10) return;
     if (!listed && !OPENS_A_SCENARIO.test(text)) return;
+
+    // the write-up is what was read, not what is under test
+    if (aboutTheWriteUp(text)) return;
 
     /* Unlabelled, the wording says which kind it is — and it has to say
        something, or a negative check would sit in the table marked Pass. */
