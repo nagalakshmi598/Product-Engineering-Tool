@@ -1162,6 +1162,25 @@ function labelOf(word) {
 }
 
 /** The numbered "Verify that …" lines, with the section each one sat under. */
+/* A scenario says what to check, and says it in one of a few shapes: a
+   numbered line, a bulleted one, or a bare sentence. Only numbered lines were
+   read, so a draft that came back as a plain list was parsed as nothing at
+   all and the scenarios were lost on their way to the table. */
+const DRAFT_LINE = /^(?:(\d+)[.)]|[-*\u2022\u25cf])\s+(.*)$/;
+const OPENS_A_SCENARIO = /^(?:verify|check|ensure|validate|confirm)\b/i;
+
+/* Markers strong enough to say what kind of check a line is, for a draft that
+   came back without its labels. Anything they do not catch is positive: a
+   check with no refusal in it is the feature working. */
+const READS_NEGATIVE = /\b(?:fails?|failure|cannot|can't|is not|are not|does not|do not|rejected?|refus\w+|invalid|without permission|unauthoris\w+|unauthoriz\w+|error message|is blocked|is denied|is skipped|is excluded)\b/i;
+const READS_EDGE = /\b(?:exactly|boundary|maximum|minimum|at the limit|empty|duplicate|re-?run|simultaneous\w*|at once|interrupted|partial\w*|very large|special characters?|emoji)\b/i;
+
+function kindOf(text) {
+  if (READS_NEGATIVE.test(text)) return 'Negative';
+  if (READS_EDGE.test(text)) return 'Edge';
+  return 'Positive';
+}
+
 function parseDraft(answer) {
   const rows = [];
   let section = '';
@@ -1170,29 +1189,35 @@ function parseDraft(answer) {
     const line = raw.trim();
     if (!line) return;
 
-    const numbered = line.match(/^(\d+)[.)]\s+(.*)$/);
-    if (numbered) {
-      let text = numbered[2].trim();
-
-      // "[Negative] Verify that …" — the label becomes its own column
-      let type = '';
-      const labelled = text.match(/^[\[(]\s*([a-z \-]{3,20})\s*[\])]\s*[:\-]?\s*(.*)$/i);
-      if (labelled) {
-        const kind = labelOf(labelled[1]);
-        if (kind) {
-          type = kind;
-          text = labelled[2].trim();
-        }
+    const listed = line.match(DRAFT_LINE);
+    const bare = !listed && OPENS_A_SCENARIO.test(line);
+    if (!listed && !bare) {
+      // a short line that is not a sentence is a heading for what follows
+      if (line.length <= 60 && !/[.!?]$/.test(line) && !/^[-*\u2022]/.test(line)) {
+        section = line.replace(/^[\[(]?\s*(?:positive|negative|edge)\s*[\])]?\s*[:\-]?\s*/i, '').replace(/[:\s]+$/, '');
       }
-
-      if (text.length > 10) rows.push({ scenario: text, section, type });
       return;
     }
 
-    // a short line that is not a sentence is a heading for what follows
-    if (line.length <= 60 && !/[.!?]$/.test(line) && !/^[-*\u2022]/.test(line)) {
-      section = line.replace(/^[\[(]?\s*(?:positive|negative|edge)\s*[\])]?\s*[:\-]?\s*/i, '').replace(/[:\s]+$/, '');
+    let text = (listed ? listed[2] : line).trim();
+
+    // "[Negative] Verify that …" — the label becomes its own column
+    let type = '';
+    const labelled = text.match(/^[\[(]\s*([a-z \-]{3,20})\s*[\])]\s*[:\-]?\s*(.*)$/i);
+    if (labelled) {
+      const kind = labelOf(labelled[1]);
+      if (kind) {
+        type = kind;
+        text = labelled[2].trim();
+      }
     }
+
+    if (text.length <= 10) return;
+    if (!listed && !OPENS_A_SCENARIO.test(text)) return;
+
+    /* Unlabelled, the wording says which kind it is — and it has to say
+       something, or a negative check would sit in the table marked Pass. */
+    rows.push({ scenario: text, section, type: type || kindOf(text) });
   });
 
   return rows;

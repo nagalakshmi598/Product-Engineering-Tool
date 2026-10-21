@@ -19,6 +19,7 @@ const LABELLED_SHEETS = new Set(['diy']);
 const { askAssistant, guessProduct } = require('./assistant');
 const attachments = require('./attachments');
 const { parseCommand, describeCommand } = require('./commands');
+const { tidyName } = require('./names');
 const { generateTestCases, hasApiKey, activeProvider, keyProblem } = require('./testcases');
 const testCaseJobs = require('./testcasejobs');
 const {
@@ -163,7 +164,7 @@ app.post('/api/enhancements', enhancementUpload, wrap(async (req, res) => {
 
   const created = (await store.createEnhancement({
     product,
-    name,
+    name: tidyName(name),
     description,
     sourceFile: sheet ? decodeFileName(sheet.originalname) : '',
     scenarios,
@@ -328,7 +329,7 @@ app.post('/api/documents', uploadDocument.single('file'), wrap(async (req, res) 
   const readable = decodeFileName(req.file.originalname);
   const name = (req.body.name || '').trim() || path.basename(readable, path.extname(readable));
 
-  const doc = await storeDocument({ name, description, product, enhancementId, file: req.file });
+  const doc = await storeDocument({ name: tidyName(name), description, product, enhancementId, file: req.file });
   res.status(201).json({ document: store.documentSummary(doc) });
 }));
 
@@ -679,7 +680,7 @@ app.post('/api/assistant/scenarios', wrap(async (req, res) => {
 
   const created = await store.createEnhancement({
     product,
-    name: String(name).trim(),
+    name: tidyName(name),
     description: (description || '').trim(),
     sourceFile: 'Assistant',
     scenarios: kept,
@@ -773,7 +774,7 @@ app.post('/api/assistant/command', wrap(async (req, res) => {
   }
 
   if (command.kind === 'rename-set') {
-    const updated = await store.updateEnhancement(target.id, { name: command.to });
+    const updated = await store.updateEnhancement(target.id, { name: tidyName(command.to) });
     return res.json({
       done: `Renamed to "${updated.name}".`,
       enhancement: store.summary(updated),
@@ -870,7 +871,7 @@ async function keepWriteUps(files, { product }) {
       continue;
     }
 
-    const doc = await storeDocument({ name, description: '', product: product || '', file });
+    const doc = await storeDocument({ name: tidyName(name), description: '', product: product || '', file });
     kept.push({ ...store.documentSummary(doc), replaced: false });
   }
 
