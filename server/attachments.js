@@ -17,11 +17,21 @@ const path = require('path');
 const mammoth = require('mammoth');
 const { parseCsv } = require('./parse');
 
-const MAX_BYTES = 10 * 1024 * 1024;
-const MAX_TEXT = 12000;          // per file, in characters handed to the model
-const MAX_FILES = 5;
+/*
+ * A feature is often specified across a folder of write-ups — one per cloud,
+ * one per direction — and the scenarios are only right if all of them are
+ * read. Five at a time meant attaching them in batches and getting a partial
+ * answer to each batch.
+ *
+ * The per-file size allows a screen recording; the text allowance is per
+ * write-up, and the models here hold far more than the whole set.
+ */
+const MAX_BYTES = 60 * 1024 * 1024;
+const MAX_TEXT = 40000;          // per file, in characters handed to the model
+const MAX_FILES = 25;
 
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']);
+const VIDEO_EXT = new Set(['.mp4', '.mov', '.webm', '.m4v', '.avi', '.mkv']);
 const SHEET_EXT = new Set(['.csv', '.tsv', '.xlsx', '.xls', '.xlsm']);
 const TEXT_EXT = new Set([
   '.txt', '.md', '.markdown', '.json', '.log', '.yml', '.yaml', '.xml', '.html',
@@ -87,6 +97,18 @@ async function readAttachment(file) {
 
   if (file.size > MAX_BYTES) {
     return { name, kind: 'skipped', note: 'larger than 10 MB' };
+  }
+
+  /* A screen recording is kept in the tool and can be watched there, but
+     nothing here can see it: no frame reaches the model, and a scenario
+     written as though one had would be invention. Say so instead. */
+  if (VIDEO_EXT.has(ext)) {
+    return {
+      name,
+      kind: 'video',
+      note: 'kept in the tool, but its contents cannot be read here — '
+        + 'describe what it shows, or attach the write-up, and the scenarios will follow that',
+    };
   }
 
   if (IMAGE_EXT.has(ext)) {

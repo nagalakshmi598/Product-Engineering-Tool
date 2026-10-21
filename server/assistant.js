@@ -1360,6 +1360,43 @@ function wantsSaved(q) {
     || /\binto the tool\b|\bto the tool\b|\bin the tool\b/.test(q);
 }
 
+/**
+ * Ask for the kinds of scenario a draft came back without.
+ *
+ * The already-drafted lines are handed back so the model does not repeat
+ * them, and so the numbering it returns can simply be thrown away — the
+ * caller renumbers.
+ */
+async function askAgainFor(kinds, already, { provider, model, context, history, system, images, question }) {
+  const wanted = kinds.join(' and ');
+  const listed = already.map((s, i) => `${i + 1}. [${s.type}] ${s.scenario}`).join('\n');
+
+  const ask = [
+    `These scenarios were drafted for: ${question}`,
+    '',
+    listed,
+    '',
+    `They are missing ${wanted} scenarios entirely. Write 5 to 8 more, all of`,
+    `them ${wanted}, for the same feature — the ways it is used wrongly, the`,
+    'limits exceeded, the mappings missing, the permissions absent, the',
+    'boundaries sat exactly upon, the runs repeated and interrupted.',
+    '',
+    'Do not repeat any scenario above. Number from 1 and label each one in',
+    `square brackets exactly as [${kinds.join('] or [')}].`,
+  ].join('\n');
+
+  try {
+    const answer = provider === 'openai'
+      ? await callOpenAi({ model, context, question: ask, history, system, images: [] })
+      : await callAnthropic({ model, context, question: ask, history, system, images: [] });
+
+    return parseDraft(String(answer || '')).filter((s) => kinds.includes(s.type));
+  } catch (err) {
+    // the first draft stands; a set of positives beats no set at all
+    return [];
+  }
+}
+
 async function askAssistant({
   question,
   history = [],
@@ -1455,10 +1492,31 @@ async function askAssistant({
       err.status = 502;
       throw err;
     }
-    const full = dropped + tidy;
+    let full = dropped + tidy;
     if (!drafting) return { answer: full, model, provider };
 
-    const scenarios = parseDraft(tidy);
+    let scenarios = parseDraft(tidy);
+
+    /* A write-up states how a feature behaves, so a draft taken from one can
+       come back as a list of confirmations — every scenario positive, not a
+       refusal among them. The negatives are the point: they are where a
+       migration tool is found out. Ask once more for the ones that are
+       missing rather than filing a set that only checks the happy path. */
+    if (scenarios.length) {
+      const missing = ['Negative', 'Edge'].filter((kind) => !scenarios.some((s) => s.type === kind));
+
+      if (missing.length) {
+        const more = await askAgainFor(missing, scenarios, {
+          provider, model, context, history: trimmed, system, images, question: text,
+        });
+        if (more.length) {
+          scenarios = scenarios.concat(more);
+          full += `\n\n${more.length} further ${missing.join(' and ').toLowerCase()} scenarios:\n`
+            + more.map((s, i) => `${scenarios.length - more.length + i + 1}. [${s.type}] ${s.scenario}`).join('\n');
+        }
+      }
+    }
+
     return {
       answer: full,
       model,

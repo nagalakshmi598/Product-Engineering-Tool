@@ -27,6 +27,10 @@ const KIND_BY_EXT = {
   '.gif': 'image',
   '.webp': 'image',
   '.bmp': 'image',
+  '.mp4': 'video',
+  '.mov': 'video',
+  '.webm': 'video',
+  '.m4v': 'video',
 };
 
 const MIME_BY_EXT = {
@@ -40,6 +44,10 @@ const MIME_BY_EXT = {
   '.md': 'text/markdown; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8',
   '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.mp4': 'video/mp4',
+  '.mov': 'video/quicktime',
+  '.webm': 'video/webm',
+  '.m4v': 'video/x-m4v',
 };
 
 const ALLOWED_EXT = Object.keys(KIND_BY_EXT);

@@ -919,6 +919,9 @@ body {
 .tc-steps li { margin-bottom: 5px; }
 .tc-steps li:last-child { margin-bottom: 0; }
 
+/* a screen recording, played where a write-up would be read */
+.doc-video { width: 100%; max-height: 520px; display: block; background: #000; border-radius: var(--radius-sm); }
+
 /* ---------- product tabs (Documents) ---------- */
 .tabs {
   display: flex; flex-wrap: wrap; gap: 2px;

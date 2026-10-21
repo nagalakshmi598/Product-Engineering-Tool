@@ -1470,6 +1470,13 @@ function buildDocumentPanel(doc) {
     frame.src = `/api/documents/${doc.id}/file`;
     frame.title = doc.name;
     body.appendChild(frame);
+  } else if (doc.kind === 'video') {
+    const player = document.createElement('video');
+    player.className = 'doc-video';
+    player.src = `/api/documents/${doc.id}/file`;
+    player.controls = true;
+    player.preload = 'metadata';
+    body.appendChild(player);
   } else if (doc.kind === 'image') {
     const figure = document.createElement('figure');
     figure.className = 'doc-figure';
@@ -1899,7 +1906,7 @@ function botBubble(role, text, extraClass = '') {
    paragraph describing it. Files ride along with one message and are not
    stored — write-ups that need keeping go through the Documents page. */
 
-const MAX_CHAT_FILES = 5;
+const MAX_CHAT_FILES = 25;
 
 function renderBotFiles() {
   const tray = el('botFiles-tray');
@@ -1937,7 +1944,7 @@ function addBotFiles(list) {
 
   const room = MAX_CHAT_FILES - bot.files.length;
   if (room <= 0) {
-    toast(`The assistant takes ${MAX_CHAT_FILES} files at a time.`, true);
+    toast(`${MAX_CHAT_FILES} files at a time is the most it takes.`, true);
     return;
   }
 

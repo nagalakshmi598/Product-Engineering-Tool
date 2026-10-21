@@ -61,10 +61,10 @@ const upload = multer({
   fileFilter: extensionFilter,
 });
 
-// documents carry screenshots, so they get a bigger ceiling
+// documents carry screenshots, and a screen recording carries rather more
 const uploadDocument = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 40 * 1024 * 1024 },
+  limits: { fileSize: attachments.MAX_BYTES },
   fileFilter(req, file, cb) {
     const ext = path.extname(file.originalname).toLowerCase();
     if (!DOCUMENT_EXT.has(ext)) {
@@ -802,7 +802,13 @@ app.post('/api/assistant/command', wrap(async (req, res) => {
    keeping and worth asking about next week. One arriving in the chat is
    filed under Documents, exactly as the upload dialog would file it. */
 
-const WRITE_UP = new Set(['.docx', '.pdf', '.md', '.txt']);
+/* A screenshot belongs to the message it came with. A write-up or a screen
+   recording is the specification of a feature, and is kept. */
+const WRITE_UP = new Set(['.docx', '.pdf', '.md', '.txt', '.mp4', '.mov', '.webm', '.m4v']);
+
+/* Twenty-five files at sixty megabytes would be a gigabyte and a half held in
+   memory at once. Nothing anyone attaches to a question comes near this. */
+const TOTAL_UPLOAD_BYTES = 200 * 1024 * 1024;
 
 /** Attached files worth keeping, in the order they arrived. */
 function writeUpsAmong(files) {
@@ -848,6 +854,14 @@ const chatUpload = multer({
 app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
   const { question, currentProduct, currentEnhancement } = req.body || {};
 
+  const weight = (req.files || []).reduce((sum, f) => sum + (f.size || 0), 0);
+  if (weight > TOTAL_UPLOAD_BYTES) {
+    return res.status(413).json({
+      error: `That is ${Math.round(weight / (1024 * 1024))} MB in one message. `
+        + `Send up to ${Math.round(TOTAL_UPLOAD_BYTES / (1024 * 1024))} MB at a time.`,
+    });
+  }
+
   /* An open set of scenarios is the thread of the conversation: a screenshot
      dropped into the chat while reading it is almost always the next part of
      the same feature, so the draft carries on there. */
@@ -887,6 +901,16 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
     attachments: read,
     openEnhancement: open ? { id: open.id, name: open.name, product: open.product } : null,
   });
+
+  /* A write-up that arrived with the message already has a name, and it is
+     a better one than the sentence that introduced it: "Canvas Retention
+     Window" rather than "Here is the write-up for the Slack canvas retention
+     window". A set already being carried on keeps its own name. */
+  const written = filed.find((d) => d.kind !== 'video');
+  if (result.draft && written && !result.draft.enhancementId) {
+    result.draft.name = written.name;
+    if (written.product) result.draft.product = written.product;
+  }
 
   res.json({
     ...result,
