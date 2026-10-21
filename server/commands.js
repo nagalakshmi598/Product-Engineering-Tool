@@ -62,9 +62,61 @@ function namedOrOpen(text) {
   return THE_OPEN_ONE.test(name) ? null : name;
 }
 
+/** A name given in an instruction, with the quoting taken off. */
+function tidyLabel(text) {
+  return String(text || '')
+    .replace(/^["'‘“]|["'’”]$/g, '')
+    .replace(/[.!?]+$/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /* ---------------- the instructions ---------------- */
 
+/* The write-ups are managed from here too, so a pattern has to know when an
+   instruction is about one rather than about a set of scenarios. */
+const A_DOCUMENT = '(?:documents?|docs?|write-?ups?|files?)';
+const NAMED = '["\'“]?(.+?)["\'”]?';
+
 const PATTERNS = [
+  /* delete the Outlook Shared Mailboxes document */
+  {
+    kind: 'delete-document',
+    re: new RegExp(
+      '\\b(?:delete|remove|drop|get\\s+rid\\s+of)\\s+(?:the\\s+)?'
+        + `(?:${A_DOCUMENT}\\s+(?:called\\s+|named\\s+)?${NAMED}`
+        + `|${NAMED}\\s+${A_DOCUMENT})\\s*$`,
+      'i'
+    ),
+    read: (m) => ({ name: namedOrOpen(m[1] || m[2]), object: 'document' }),
+  },
+
+  /* rename the Group DM document to Group DM naming */
+  {
+    kind: 'rename-document',
+    re: new RegExp(
+      '\\brename\\s+(?:the\\s+)?'
+        + `(?:${A_DOCUMENT}\\s+(?:called\\s+|named\\s+)?${NAMED}`
+        + `|${NAMED}\\s+${A_DOCUMENT})`
+        + `\\s+(?:to|as)\\s+${NAMED}\\s*$`,
+      'i'
+    ),
+    read: (m) => ({ name: namedOrOpen(m[1] || m[2]), to: tidyLabel(m[3]), object: 'document' }),
+  },
+
+  /* move the Gmail Sprawl document to Email */
+  {
+    kind: 'move-document',
+    re: new RegExp(
+      '\\b(?:move|file|put|reassign)\\s+(?:the\\s+)?'
+        + `(?:${A_DOCUMENT}\\s+(?:called\\s+|named\\s+)?${NAMED}`
+        + `|${NAMED}\\s+${A_DOCUMENT})`
+        + `\\s+(?:to|under|into)\\s+${NAMED}\\s*$`,
+      'i'
+    ),
+    read: (m) => ({ name: namedOrOpen(m[1] || m[2]), to: tidyLabel(m[3]), object: 'document' }),
+  },
+
   /* mark 12 and 14 as failed */
   {
     kind: 'set-status',
@@ -111,7 +163,7 @@ const PATTERNS = [
 
 /* Deleting is the one that cannot be taken back, so it is put to the person
    before it happens. The rest are a click to undo and are simply done. */
-const NEEDS_CONFIRMING = new Set(['delete-set', 'delete-scenarios']);
+const NEEDS_CONFIRMING = new Set(['delete-set', 'delete-scenarios', 'delete-document']);
 
 /**
  * Read a message as an instruction to change something.
@@ -143,6 +195,11 @@ function parseCommand(question) {
     if (pattern.kind === 'rename-set' && !read.to) continue;
     if (pattern.kind === 'edit-scenario' && !read.text) continue;
 
+    /* A write-up has to be named: there is no "the open one" on a page that
+       lists fifteen of them. */
+    if (read.object === 'document' && (!read.name || read.name.length < 3)) continue;
+    if (/^(?:rename|move)-document$/.test(pattern.kind) && !read.to) continue;
+
     return { kind: pattern.kind, confirm: NEEDS_CONFIRMING.has(pattern.kind), ...read };
   }
 
@@ -161,6 +218,12 @@ function describeCommand(command, context = {}) {
       return `Reword scenario ${command.sno}${where}.`;
     case 'delete-scenarios':
       return `Delete ${list(command.snos)}${where}. This cannot be undone.`;
+    case 'delete-document':
+      return `Delete the write-up "${command.name}". This cannot be undone.`;
+    case 'rename-document':
+      return `Rename the write-up "${command.name}" to "${command.to}".`;
+    case 'move-document':
+      return `File the write-up "${command.name}" under ${command.to}.`;
     case 'rename-set':
       return `Rename "${command.name || context.enhancementName}" to "${command.to}".`;
     case 'delete-set':

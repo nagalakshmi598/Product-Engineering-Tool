@@ -2086,6 +2086,19 @@ async function runCommand(command, target) {
     // the page is showing what just changed, so bring it up to date
     await loadProducts();
 
+    /* A write-up lives on the Documents page, so that is what needs redrawing
+       — the scenario views know nothing about it. */
+    if (result.isDocument) {
+      if (state.view === 'documents') {
+        await openDocuments({ product: state.docTab === 'all' ? null : state.docTab, push: false });
+      } else {
+        const { documents } = await api('/api/documents');
+        state.documents = documents;
+        if (state.view === 'dashboard') renderDashboard();
+      }
+      return;
+    }
+
     if (result.gone) {
       if (state.view === 'scenarios' && state.enhancement && target && state.enhancement.id === target.id) {
         await openProduct(result.product);
@@ -2155,6 +2168,12 @@ function describeChosen(command, target) {
   const list = (ns) => (ns.length === 1 ? `scenario ${ns[0]}` : `scenarios ${ns.join(', ')}`);
 
   switch (command.kind) {
+    case 'delete-document':
+      return `Delete the write-up "${target.name}". This cannot be undone.`;
+    case 'rename-document':
+      return `Rename the write-up "${target.name}" to "${command.to}".`;
+    case 'move-document':
+      return `File the write-up "${target.name}" under ${command.to}.`;
     case 'delete-set':
       return `Delete "${target.name}" and every scenario in it. This cannot be undone.`;
     case 'delete-scenarios':

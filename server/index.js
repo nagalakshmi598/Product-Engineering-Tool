@@ -706,22 +706,45 @@ function plural(n, word) {
 }
 
 /** The set an instruction is about: the one named, or the one being read. */
+/** A product named in an instruction — "Email", "data sprawl", "diy". */
+function findProductKey(name) {
+  const wanted = String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!wanted) return null;
+
+  return store.PRODUCTS.find((p) => (
+    p.key === wanted
+    || p.label.toLowerCase().replace(/[^a-z0-9]/g, '') === wanted
+  )) || null;
+}
+
+/** The closest name among a list, or nothing if none is close enough. */
+function closestTo(name, rows) {
+  const exact = rows.find((r) => r.name.toLowerCase() === String(name).toLowerCase());
+  if (exact) return exact;
+
+  const wanted = scenarioKey(name);
+  let best = null;
+  let bestScore = 0;
+
+  rows.forEach((row) => {
+    const score = alike(wanted, scenarioKey(row.name));
+    if (score > bestScore) { best = row; bestScore = score; }
+  });
+
+  return bestScore >= 0.5 ? best : null;
+}
+
 async function targetOf(command, openId) {
+  /* An instruction about a write-up is answered from the write-ups. They are
+     always named — there is no "the open one" on a page listing fifteen. */
+  if (command.object === 'document') {
+    const found = closestTo(command.name, await store.allDocuments());
+    return found ? store.getDocument(found.id) : null;
+  }
+
   if (command.name) {
-    const all = await store.allEnhancements();
-    const wanted = scenarioKey(command.name);
-
-    const exact = all.find((e) => e.name.toLowerCase() === command.name.toLowerCase());
-    if (exact) return exact;
-
-    let best = null;
-    let bestScore = 0;
-    all.forEach((e) => {
-      const score = alike(wanted, scenarioKey(e.name));
-      if (score > bestScore) { best = e; bestScore = score; }
-    });
-    if (bestScore >= 0.5) return store.getEnhancement(best.id);
-    return null;
+    const found = closestTo(command.name, await store.allEnhancements());
+    return found ? store.getEnhancement(found.id) : null;
   }
 
   return openId ? store.getEnhancement(openId) : null;
@@ -735,19 +758,20 @@ async function targetOf(command, openId) {
  * that is not a choice, it is the same problem again.
  */
 async function nearbySets(command, product) {
-  const all = await store.allEnhancements();
+  const aboutDocument = command.object === 'document';
+  const all = aboutDocument ? await store.allDocuments() : await store.allEnhancements();
   const wanted = command.name ? scenarioKey(command.name) : '';
 
-  const scored = all.map((e) => ({
-    e,
-    score: (product && e.product === product ? 1 : 0)
-      + (wanted ? alike(wanted, scenarioKey(e.name)) : 0),
+  const scored = all.map((row) => ({
+    row,
+    score: (product && row.product === product ? 1 : 0)
+      + (wanted ? alike(wanted, scenarioKey(row.name)) : 0),
   }));
 
   return scored
     .sort((a, b) => b.score - a.score)
     .slice(0, 6)
-    .map(({ e }) => store.summary(e));
+    .map(({ row }) => (aboutDocument ? store.documentSummary(row) : store.summary(row)));
 }
 
 app.post('/api/assistant/command', wrap(async (req, res) => {
@@ -768,6 +792,47 @@ app.post('/api/assistant/command', wrap(async (req, res) => {
       choices: near.map((e) => ({ id: e.id, name: e.name, product: e.product, scenarioCount: e.scenarioCount })),
     });
   }
+
+  /* ---- the write-ups ---- */
+
+  if (command.kind === 'delete-document') {
+    await store.deleteDocument(target.id);
+    removeDocumentFiles(target.id);
+    return res.json({
+      done: `Deleted the write-up "${target.name}".`,
+      gone: true,
+      isDocument: true,
+      product: target.product,
+    });
+  }
+
+  if (command.kind === 'rename-document') {
+    const updated = await store.updateDocument(target.id, { name: tidyName(command.to) });
+    return res.json({
+      done: `The write-up is now called "${updated.name}".`,
+      isDocument: true,
+      document: store.documentSummary(updated),
+    });
+  }
+
+  if (command.kind === 'move-document') {
+    const wanted = findProductKey(command.to);
+    if (!wanted) {
+      return res.status(400).json({
+        error: `There is no product called "${command.to}". `
+          + `Try one of: ${store.PRODUCTS.map((p) => p.label).join(', ')}.`,
+      });
+    }
+
+    const updated = await store.updateDocument(target.id, { product: wanted.key });
+    return res.json({
+      done: `"${updated.name}" is now filed under ${wanted.label}.`,
+      isDocument: true,
+      document: store.documentSummary(updated),
+    });
+  }
+
+  /* ---- the scenario sets ---- */
 
   if (command.kind === 'delete-set') {
     await store.deleteEnhancement(target.id);
