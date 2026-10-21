@@ -617,8 +617,12 @@ app.post('/api/assistant/scenarios', wrap(async (req, res) => {
   if (!Array.isArray(scenarios) || !scenarios.length) {
     return res.status(400).json({ error: 'There are no scenarios to save.' });
   }
-  if (scenarios.length > 200) {
-    return res.status(400).json({ error: 'That is more than 200 scenarios; split it up.' });
+  /* A draft taken across a shelf of write-ups is legitimately long: thirteen
+     specifications came back as two hundred and eighty-four scenarios, and
+     two hundred was turning that away. What remains is a guard against a
+     payload nobody meant to send, not a limit on how much can be tested. */
+  if (scenarios.length > 2000) {
+    return res.status(400).json({ error: `${scenarios.length} scenarios in one request is more than this is for.` });
   }
 
   const rows = scenarios
@@ -717,16 +721,45 @@ async function targetOf(command, openId) {
   return openId ? store.getEnhancement(openId) : null;
 }
 
+/**
+ * The sets an instruction might have meant, best first.
+ *
+ * What is being looked at comes first, then anything whose name is close to
+ * what was asked for, then the rest. Never more than six: a list longer than
+ * that is not a choice, it is the same problem again.
+ */
+async function nearbySets(command, product) {
+  const all = await store.allEnhancements();
+  const wanted = command.name ? scenarioKey(command.name) : '';
+
+  const scored = all.map((e) => ({
+    e,
+    score: (product && e.product === product ? 1 : 0)
+      + (wanted ? alike(wanted, scenarioKey(e.name)) : 0),
+  }));
+
+  return scored
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6)
+    .map(({ e }) => store.summary(e));
+}
+
 app.post('/api/assistant/command', wrap(async (req, res) => {
   const { command, enhancementId } = req.body || {};
   if (!command || !command.kind) return res.status(400).json({ error: 'No change was asked for.' });
 
   const target = await targetOf(command, enhancementId);
   if (!target) {
+    /* Pointing at a screenshot and saying "this one" is how anyone asks, and
+       nothing here can see where the arrow points. Rather than refuse, say
+       what there is to choose from — one of them is almost always meant. */
+    const near = await nearbySets(command, req.body.product);
+
     return res.status(404).json({
       error: command.name
-        ? `I cannot find a set called "${command.name}".`
-        : 'Open the set of scenarios first, then ask again.',
+        ? `There is no set called "${command.name}".`
+        : 'Which set did you mean?',
+      choices: near.map((e) => ({ id: e.id, name: e.name, product: e.product, scenarioCount: e.scenarioCount })),
     });
   }
 
@@ -878,10 +911,27 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
   const command = parseCommand(question);
   if (command) {
     const target = await targetOf(command, open ? open.id : null);
+
+    if (!target) {
+      const near = await nearbySets(command, currentProduct);
+      return res.json({
+        answer: near.length
+          ? (command.name
+            ? `There is no set called "${command.name}". Did you mean one of these?`
+            : 'Which set did you mean?')
+          : 'I cannot tell which set you mean. Open it, or give me its name.',
+        command,
+        target: null,
+        choices: near.map((e) => ({ id: e.id, name: e.name, product: e.product, scenarioCount: e.scenarioCount })),
+        model: 'built-in',
+        provider: 'local',
+      });
+    }
+
     return res.json({
-      answer: describeCommand(command, { enhancementName: target ? target.name : null }),
+      answer: describeCommand(command, { enhancementName: target.name }),
       command,
-      target: target ? { id: target.id, name: target.name, product: target.product } : null,
+      target: { id: target.id, name: target.name, product: target.product },
       model: 'built-in',
       provider: 'local',
     });

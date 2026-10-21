@@ -1324,10 +1324,17 @@ function titleFor(feature, scenarios) {
   const grounded = terms.filter((term) => body.includes(term)).length;
 
   const section = (scenarios.find((s) => s.section) || {}).section;
+
+  /* What someone types to ask for scenarios is not always a name for them.
+     "I uploaded total 9 data sprawl documents but you rewritten test one" is
+     a complaint, and it ended up on the set as its title. Anything that runs
+     past eight words is a sentence, and a sentence is never the name: the
+     sections the draft came back in are, and failing those, what the first
+     scenario is about. */
   const readsAsSentence = fromAsk.split(/\s+/).length > 8;
 
-  if (terms.length >= 2 && grounded >= 1 && fromAsk.split(/\s+/).length >= 2
-      && !(readsAsSentence && section)) {
+  if (!readsAsSentence && terms.length >= 2 && grounded >= 1
+      && fromAsk.split(/\s+/).length >= 2) {
     return fromAsk;
   }
 
@@ -1397,6 +1404,84 @@ async function askAgainFor(kinds, already, { provider, model, context, history, 
   }
 }
 
+/*
+ * Asking for scenarios across a shelf of write-ups rather than one.
+ *
+ * "I uploaded nine documents, write scenarios for them" is one question with
+ * nine answers in it. Put to a model as a single call it picks a favourite
+ * and writes about that: nine write-ups went in and one came back covered.
+ * So each is drafted for in turn, and the sections carry the name of the
+ * write-up they came from.
+ */
+const EVERY_WRITE_UP = new RegExp(
+  [
+    '\\b(?:all|every|each|both)\\b[\\s\\S]{0,40}\\b(?:documents?|write-?ups?|files?|specs?|specifications?)\\b',
+    '\\b(?:documents?|write-?ups?|files?)\\b[\\s\\S]{0,30}\\b(?:all|every|each)\\b',
+    '\\b\\d{1,3}\\s+(?:\\w+\\s+){0,3}(?:documents?|write-?ups?|files?)\\b',
+    '\\b(?:documents?|write-?ups?)\\b[\\s\\S]{0,30}\\bone by one\\b',
+  ].join('|'),
+  'i'
+);
+
+function wantsEveryWriteUp(q) {
+  return EVERY_WRITE_UP.test(String(q || ''));
+}
+
+/** The write-ups a question is about: a product's, or all of them. */
+async function writeUpsInScope(question, currentProduct) {
+  const all = (await store.allDocuments()).filter((d) => toPlainText(d.html).trim().length > 200);
+  const product = findProduct(String(question).toLowerCase(), await store.listProducts());
+  const key = product ? product.key : currentProduct;
+
+  const scoped = key ? all.filter((d) => d.product === key) : [];
+  return scoped.length ? scoped : all;
+}
+
+/**
+ * Draft for each write-up in turn, and label the sections with its name.
+ *
+ * One failed write-up does not sink the rest: whatever came back is kept and
+ * the one that failed is named, so it can be asked for again on its own.
+ */
+async function draftPerWriteUp(documents, { provider, model, history, system, question }) {
+  const all = [];
+  const covered = [];
+  const refused = [];
+
+  for (const doc of documents) {
+    const text = toPlainText(doc.html);
+    const ask = [
+      `Write test scenarios for the feature specified in this write-up.`,
+      '',
+      `=== "${doc.name}" ===`,
+      text.slice(0, DOC_EXCERPT),
+      '',
+      'Draft from what it states — its field names, its limits, its messages.',
+      `Begin each section name with "${doc.name} — ".`,
+    ].join('\n');
+
+    try {
+      const answer = provider === 'openai'
+        ? await callOpenAi({ model, context: '', question: ask, history, system, images: [] })
+        : await callAnthropic({ model, context: '', question: ask, history, system, images: [] });
+
+      const rows = parseDraft(String(answer || ''));
+      if (!rows.length) { refused.push(doc.name); continue; }
+
+      rows.forEach((row) => {
+        all.push({ ...row, section: row.section && row.section.includes(doc.name)
+          ? row.section
+          : `${doc.name}${row.section ? ` — ${row.section}` : ''}` });
+      });
+      covered.push({ name: doc.name, count: rows.length });
+    } catch (err) {
+      refused.push(doc.name);
+    }
+  }
+
+  return { scenarios: all, covered, refused };
+}
+
 async function askAssistant({
   question,
   history = [],
@@ -1457,6 +1542,46 @@ async function askAssistant({
   const context = (await buildContext(text)) + attachmentContext(fileText);
   // a drafting request only reaches here when no write-up covered the feature
   const system = scenarioFallback(text) ? SYSTEM_DRAFT : SYSTEM;
+
+  /* A question about the whole shelf is answered a shelf at a time. */
+  if (drafting && wantsEveryWriteUp(text)) {
+    const shelf = await writeUpsInScope(text, currentProduct);
+
+    if (shelf.length > 1) {
+      const { scenarios, covered, refused } = await draftPerWriteUp(shelf, {
+        provider, model, history: trimmed, system: SYSTEM_DRAFT, question: text,
+      });
+
+      if (scenarios.length) {
+        const lines = [
+          `${plural(scenarios.length, 'scenario')} across ${plural(covered.length, 'write-up')}:`,
+          '',
+          ...covered.map((c) => `  ${c.name} — ${plural(c.count, 'scenario')}`),
+        ];
+        if (refused.length) {
+          lines.push('', `Nothing came back for: ${refused.join(', ')}. Ask for those on their own.`);
+        }
+        lines.push('', ...scenarios.map((s, i) => `${i + 1}. [${s.type}] ${s.scenario}`));
+
+        const label = (await store.listProducts())
+          .find((p) => p.key === guessProduct(text, currentProduct));
+
+        return {
+          answer: lines.join('\n'),
+          model,
+          provider,
+          draft: {
+            feature: 'the uploaded write-ups',
+            name: openEnhancement ? openEnhancement.name : `${label ? label.label : 'Uploaded'} write-ups`,
+            product: openEnhancement ? openEnhancement.product : guessProduct(text, currentProduct),
+            enhancementId: openEnhancement ? openEnhancement.id : null,
+            scenarios,
+            save: wantsSaved(text),
+          },
+        };
+      }
+    }
+  }
 
   const ask = (pictures) => (provider === 'openai'
     ? callOpenAi({ model, context, question: text, history: trimmed, system, images: pictures })

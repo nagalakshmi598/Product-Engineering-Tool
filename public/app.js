@@ -2107,6 +2107,69 @@ async function runCommand(command, target) {
   }
 }
 
+/**
+ * Offer the sets an instruction might have meant.
+ *
+ * Pointing at a screenshot and saying "this one" is how anyone asks, and
+ * nothing here can see where the arrow points — so the candidates are put up
+ * to be picked from, rather than the instruction being refused.
+ */
+function offerChoices(command, choices) {
+  const row = document.createElement('div');
+  row.className = 'bot-actions bot-choices';
+
+  choices.forEach((choice) => {
+    const pick = document.createElement('button');
+    pick.type = 'button';
+    pick.className = 'bot-action';
+    pick.textContent = `${choice.name} (${plural(choice.scenarioCount, 'scenario')})`;
+    pick.title = `${productLabel(choice.product)} — ${choice.name}`;
+
+    pick.addEventListener('click', () => {
+      row.remove();
+      const aimed = { ...command, name: choice.name };
+      botBubble('bot', describeChosen(aimed, choice));
+      if (command.confirm) askToConfirm(aimed, choice);
+      else runCommand(aimed, choice);
+    });
+
+    row.appendChild(pick);
+  });
+
+  const none = document.createElement('button');
+  none.type = 'button';
+  none.className = 'bot-action';
+  none.textContent = 'None of these';
+  none.addEventListener('click', () => {
+    row.remove();
+    botBubble('bot', 'Left as it is. Open the set you mean, and ask again.');
+  });
+  row.appendChild(none);
+
+  el('botLog').appendChild(row);
+  el('botLog').scrollTop = el('botLog').scrollHeight;
+}
+
+/** What is about to happen, once a set has been picked. */
+function describeChosen(command, target) {
+  const list = (ns) => (ns.length === 1 ? `scenario ${ns[0]}` : `scenarios ${ns.join(', ')}`);
+
+  switch (command.kind) {
+    case 'delete-set':
+      return `Delete "${target.name}" and every scenario in it. This cannot be undone.`;
+    case 'delete-scenarios':
+      return `Delete ${list(command.snos)} in "${target.name}". This cannot be undone.`;
+    case 'rename-set':
+      return `Rename "${target.name}" to "${command.to}".`;
+    case 'set-status':
+      return `Mark ${list(command.snos)} in "${target.name}" as ${command.status === 'pending' ? 'not run' : command.status}.`;
+    case 'edit-scenario':
+      return `Reword scenario ${command.sno} in "${target.name}".`;
+    default:
+      return `Make that change to "${target.name}".`;
+  }
+}
+
 /** Read a destructive change back, and wait to be told to go ahead. */
 function askToConfirm(command, target) {
   const row = document.createElement('div');
@@ -2201,6 +2264,11 @@ async function saveDraft(draft, button) {
     if (result.skipped && result.added) {
       botBubble('bot', `${plural(result.skipped, 'scenario')} skipped — already in the set.`);
     }
+
+    /* The button said "Saving…" from the moment it was pressed and was
+       never told the saving had finished, so a set that was filed minutes
+       ago still looked as though it were in flight. */
+    button.textContent = result.added ? `Saved ${plural(result.added, 'scenario')}` : 'Nothing to add';
 
     botOpenLink(result.enhancement.id, result.enhancement.name);
 
@@ -2357,6 +2425,13 @@ async function askBot(question) {
       bot.history.push({ role: 'user', content: text });
       bot.history.push({ role: 'assistant', content: result.answer });
       bot.history = bot.history.slice(-8);
+
+      /* Nothing matched what was asked for, so the candidates are offered
+         rather than the instruction refused. */
+      if (!result.target) {
+        if (result.choices && result.choices.length) offerChoices(result.command, result.choices);
+        return;
+      }
 
       if (result.command.confirm) askToConfirm(result.command, result.target);
       else await runCommand(result.command, result.target);
