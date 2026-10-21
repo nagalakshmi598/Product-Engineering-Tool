@@ -1,0 +1,118 @@
+'use strict';
+
+/**
+ * Writing a walkthrough guide into the tool.
+ *
+ * A guide is a write-up of a different shape: a numbered run of steps, each
+ * with a sentence saying what was done and a screenshot of the screen it was
+ * done on — the shape of "DIY Email Migration Guide For Outlook to Gmails".
+ *
+ * It is stored exactly as an uploaded write-up is, so it reads on the
+ * Documents page like any other, its screenshots are served from the same
+ * place, and the assistant can draft scenarios from it without knowing it was
+ * not a Word file.
+ *
+ * Nothing here captures anything. A step arrives with its screenshot already
+ * taken; where that image came from — a browser being driven, a frame lifted
+ * from a recording, a file someone picked — is the caller's business.
+ */
+
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+
+const store = require('./store');
+const { documentFilePath } = require('./documents');
+
+const DOC_ROOT = path.join(__dirname, 'uploads', 'docs');
+
+function escapeHtml(text) {
+  return String(text == null ? '' : text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** png, jpeg or webp, from the opening bytes rather than from a claim. */
+function imageExtension(buffer) {
+  if (!buffer || buffer.length < 12) return null;
+  const hex = buffer.subarray(0, 12).toString('hex');
+
+  if (hex.startsWith('89504e470d0a1a0a')) return '.png';
+  if (hex.startsWith('ffd8ff')) return '.jpg';
+  if (hex.startsWith('52494646') && buffer.subarray(8, 12).toString('ascii') === 'WEBP') return '.webp';
+
+  return null;
+}
+
+/**
+ * Write a guide into the tool.
+ *
+ * @param {object} guide
+ * @param {string} guide.title        what the guide is called
+ * @param {string} [guide.product]    the product it belongs under
+ * @param {string} [guide.intro]      a sentence before the first step
+ * @param {Array<{title: string, text: string, screenshot?: Buffer}>} guide.steps
+ * @returns {Promise<object>} the stored document
+ */
+async function writeGuide({ title, product = '', intro = '', steps = [] }) {
+  const name = String(title || '').trim();
+  if (!name) {
+    const err = new Error('A guide needs a title.');
+    err.status = 400;
+    throw err;
+  }
+  if (!steps.length) {
+    const err = new Error('A guide needs at least one step.');
+    err.status = 400;
+    throw err;
+  }
+
+  const id = crypto.randomUUID();
+  const folder = path.join(DOC_ROOT, id);
+  fs.mkdirSync(folder, { recursive: true });
+
+  const lines = [`<h1>${escapeHtml(name)}</h1>`];
+  if (intro) lines.push(`<p>${escapeHtml(intro)}</p>`);
+
+  let shots = 0;
+
+  steps.forEach((step, i) => {
+    lines.push(`<h3>Step ${i + 1}: ${escapeHtml(step.title || 'Step')}</h3>`);
+    if (step.text) lines.push(`<p>${escapeHtml(step.text)}</p>`);
+
+    /* A step without a picture is still a step: the sentence carries it, and
+       saying so is better than leaving a gap where an image failed. */
+    const ext = imageExtension(step.screenshot);
+    if (!ext) {
+      if (step.screenshot) lines.push('<p><em>(the screenshot for this step could not be read)</em></p>');
+      return;
+    }
+
+    shots += 1;
+    const file = `image-${shots}${ext}`;
+    fs.writeFileSync(path.join(folder, file), step.screenshot);
+    lines.push(
+      `<p><img src="/api/documents/${id}/assets/${file}" `
+        + `alt="${escapeHtml(step.title || `Step ${i + 1}`)}" /></p>`
+    );
+  });
+
+  return store.createDocument({
+    id,
+    name,
+    description: '',
+    product,
+    enhancementId: '',
+    fileName: `${name}.html`,
+    kind: 'text',
+    html: lines.join('\n'),
+    imageCount: shots,
+    storedFile: '',
+    mime: 'text/html; charset=utf-8',
+    sizeBytes: Buffer.byteLength(lines.join('\n'), 'utf8'),
+  });
+}
+
+module.exports = { writeGuide, imageExtension, DOC_ROOT, documentFilePath };
