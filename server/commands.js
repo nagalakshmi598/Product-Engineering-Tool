@@ -77,6 +77,22 @@ function tidyLabel(text) {
    instruction is about one rather than about a set of scenarios. */
 const A_DOCUMENT = '(?:documents?|docs?|write-?ups?|files?)';
 
+/* Saying "document" settles what the instruction is about, whether or not a
+   name follows it. "Delete this document, not the scenarios" is about a
+   write-up; reading it as the name of a set — and then offering sets to
+   delete — answers the opposite of what was asked. */
+const MENTIONS_A_DOCUMENT = new RegExp(`\\b${A_DOCUMENT}\\b`, 'i');
+
+/* And saying "scenarios" settles it the other way, so that the word for a
+   write-up appearing later in the sentence does not pull it back. */
+const MENTIONS_SCENARIOS = /\b(?:scenarios?|rows?|test\s+cases?)\b/i;
+
+/* "Delete the scenarios in the Egnyte document" has the shape of a write-up
+   being named — "the <something> document" — but the something is not a name,
+   it is the word for the other thing in the tool. A write-up's name may well
+   end in "Scenarios"; none of them begins with it. */
+const STARTS_AS_SCENARIOS = /^(?:the\s+|all\s+|these\s+|those\s+)*(?:scenarios?|rows?|test\s+cases?)\b/i;
+
 /* The columns of the scenario table. These name a part of what is on screen,
    never a set of scenarios, so "remove that section" empties a column — it
    does not delete eighty-six rows. */
@@ -94,6 +110,18 @@ const PATTERNS = [
       'i'
     ),
     read: (m) => ({ name: namedOrOpen(m[1] || m[2]), object: 'document' }),
+  },
+
+  /* delete this document — no name on it, so which one has to be asked, and
+     asked about write-ups rather than about sets of scenarios */
+  {
+    kind: 'delete-document',
+    re: new RegExp(
+      '\\b(?:delete|remove|drop|get\\s+rid\\s+of)\\s+'
+        + `(?:this|that|the|these|those|it)?\\s*${A_DOCUMENT}\\b`,
+      'i'
+    ),
+    read: () => ({ name: null, object: 'document' }),
   },
 
   /* rename the Group DM document to Group DM naming */
@@ -213,9 +241,21 @@ function parseCommand(question) {
     if (pattern.kind === 'rename-set' && !read.to) continue;
     if (pattern.kind === 'edit-scenario' && !read.text) continue;
 
-    /* A write-up has to be named: there is no "the open one" on a page that
-       lists fifteen of them. */
-    if (read.object === 'document' && (!read.name || read.name.length < 3)) continue;
+    /* A write-up has to be named to be renamed or moved: there is no "the
+       open one" on a page that lists fifteen of them. Deleting one may go
+       unnamed — it is put to the person before it happens anyway, and that
+       is the moment to ask which. */
+    if (read.object === 'document' && pattern.kind !== 'delete-document'
+      && (!read.name || read.name.length < 3)) continue;
+
+    /* What was captured as a write-up's name is the word for scenarios, so
+       scenarios are what was asked about. */
+    if (read.object === 'document' && read.name && STARTS_AS_SCENARIOS.test(read.name)) continue;
+
+    /* The word decides. An instruction that says "document" is never read as
+       the name of a set, even when no write-up matches what was typed. */
+    if (pattern.kind === 'delete-set' && MENTIONS_A_DOCUMENT.test(instruction)
+      && !MENTIONS_SCENARIOS.test(instruction)) continue;
     if (/^(?:rename|move)-document$/.test(pattern.kind) && !read.to) continue;
     if (pattern.kind === 'clear-column' && !read.column) continue;
 
@@ -238,7 +278,9 @@ function describeCommand(command, context = {}) {
     case 'delete-scenarios':
       return `Delete ${list(command.snos)}${where}. This cannot be undone.`;
     case 'delete-document':
-      return `Delete the write-up "${command.name}". This cannot be undone.`;
+      return command.name || context.documentName
+        ? `Delete the write-up "${command.name || context.documentName}". This cannot be undone.`
+        : 'Delete that write-up. This cannot be undone.';
     case 'rename-document':
       return `Rename the write-up "${command.name}" to "${command.to}".`;
     case 'move-document':

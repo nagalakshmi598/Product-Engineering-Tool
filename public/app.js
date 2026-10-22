@@ -1901,6 +1901,95 @@ function botBubble(role, text, extraClass = '') {
   return row;
 }
 
+/* ---------------- changing your mind mid-sentence ----------------
+ *
+ * A question sent with a word wrong is usually easier to correct than to
+ * retype, and the answer to the corrected one is what was wanted all along.
+ * So a sent message can be edited, and the conversation carries on from the
+ * edit: everything that followed it was an answer to the old wording, and
+ * goes with it. The files that rode along are kept and sent again.
+ */
+
+/** Put an Edit control under a message that has been sent. */
+function allowEditing(row, turn) {
+  const edit = document.createElement('button');
+  edit.type = 'button';
+  edit.className = 'bot-edit';
+  edit.textContent = 'Edit';
+  edit.title = 'Change this message and ask again from here';
+  edit.addEventListener('click', () => reopenMessage(row, turn));
+  row.appendChild(edit);
+  return row;
+}
+
+/** Turn a sent message back into something typeable. */
+function reopenMessage(row, turn) {
+  if (bot.busy || row.classList.contains('is-editing')) return;
+
+  const bubble = row.querySelector('.bot-bubble');
+  const edit = row.querySelector('.bot-edit');
+  const shown = bubble.textContent;
+
+  row.classList.add('is-editing');
+  bubble.textContent = '';
+  if (edit) edit.hidden = true;
+
+  const box = document.createElement('textarea');
+  box.className = 'bot-edit-box';
+  box.value = turn.text;
+  box.rows = Math.min(6, Math.max(2, turn.text.split('\n').length + 1));
+
+  const actions = document.createElement('div');
+  actions.className = 'bot-edit-actions';
+
+  const send = document.createElement('button');
+  send.type = 'button';
+  send.className = 'bot-action is-primary';
+  send.textContent = 'Ask again';
+
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'bot-action';
+  cancel.textContent = 'Cancel';
+
+  const close = () => {
+    row.classList.remove('is-editing');
+    bubble.textContent = shown;
+    if (edit) edit.hidden = false;
+  };
+
+  cancel.addEventListener('click', close);
+
+  send.addEventListener('click', () => {
+    const changed = box.value.trim();
+    if (!changed) return;
+    if (changed === turn.text) return close();
+
+    /* What came after was an answer to the old wording. It goes with it,
+       including the turns the model was told about. */
+    const log = el('botLog');
+    while (log.lastChild && log.lastChild !== row) log.removeChild(log.lastChild);
+    log.removeChild(row);
+    bot.history = bot.history.slice(0, turn.historyAt);
+
+    // the same files ride along again, so the edit is of the message, not of it minus its attachments
+    bot.files = turn.files.slice();
+    renderBotFiles();
+
+    askBot(changed);
+  });
+
+  box.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send.click(); }
+    if (event.key === 'Escape') close();
+  });
+
+  actions.append(send, cancel);
+  bubble.append(box, actions);
+  box.focus();
+  box.setSelectionRange(box.value.length, box.value.length);
+}
+
 /* ---------------- attachments ----------------
    A screenshot of the bug, or a sheet of scenarios, says more than a
    paragraph describing it. Files ride along with one message and are not
@@ -2078,7 +2167,14 @@ async function runCommand(command, target) {
     const result = await api('/api/assistant/command', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command, enhancementId: target ? target.id : null }),
+      /* Which of the two it is depends on the instruction, and the server
+         knows that from the command; both ids are sent so that an unnamed
+         "delete this document" still finds the write-up it was shown. */
+      body: JSON.stringify({
+        command,
+        enhancementId: target ? target.id : null,
+        documentId: target ? target.id : null,
+      }),
     });
 
     botBubble('bot', result.done);
@@ -2155,7 +2251,9 @@ function offerChoices(command, choices) {
   none.textContent = 'None of these';
   none.addEventListener('click', () => {
     row.remove();
-    botBubble('bot', 'Left as it is. Open the set you mean, and ask again.');
+    botBubble('bot', aboutDocuments
+      ? 'Left as it is. Open the write-up you mean, and ask again.'
+      : 'Left as it is. Open the set you mean, and ask again.');
   });
   row.appendChild(none);
 
@@ -2470,7 +2568,14 @@ async function askBot(question) {
   bot.files = [];
   renderBotFiles();
 
-  botBubble('user', sent.length ? `${text}\n\n${sent.map((f) => `📎 ${f.name}`).join('\n')}` : text);
+  /* Noted before the answer comes back, so that editing this message can put
+     the conversation back exactly where it stood when it was asked. */
+  const turn = { text, files: sent, historyAt: bot.history.length };
+
+  allowEditing(
+    botBubble('user', sent.length ? `${text}\n\n${sent.map((f) => `📎 ${f.name}`).join('\n')}` : text),
+    turn
+  );
 
   const thinking = botBubble('bot', 'Looking through the tool\u2026', 'is-thinking');
 
@@ -2483,6 +2588,12 @@ async function askBot(question) {
     // reading a set of scenarios means the next ones belong on the end of it
     if (state.view === 'scenarios' && state.enhancement) {
       form.append('currentEnhancement', state.enhancement.id);
+    }
+
+    /* And reading a write-up is what "this document" means. Only one is ever
+       open at a time, so there is no doubt about which. */
+    if (state.view === 'documents' && state.openDocs.size === 1) {
+      form.append('currentDocument', [...state.openDocs][0]);
     }
     sent.forEach((file) => form.append('files', file, file.name));
 

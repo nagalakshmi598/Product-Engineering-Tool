@@ -1098,3 +1098,25 @@ body {
   .view-actions .input { width: 100%; }
   .doc-article { padding: 22px 20px; }
 }
+
+/* editing a message already sent: the control sits beside the bubble, out of
+   the way until it is wanted */
+.bot-msg.is-user { align-items: flex-end; gap: 6px; }
+.bot-edit {
+  background: none; border: 0; padding: 2px 4px; cursor: pointer;
+  font: 600 11px/1.3 inherit; color: var(--faint);
+  opacity: 0; transition: opacity .14s var(--ease), color .14s var(--ease);
+  align-self: flex-end; flex: none;
+}
+.bot-msg.is-user:hover .bot-edit, .bot-edit:focus-visible { opacity: 1; }
+.bot-edit:hover { color: var(--blue); text-decoration: underline; }
+
+.bot-msg.is-editing .bot-bubble { max-width: 100%; width: 100%; }
+.bot-edit-box {
+  width: 100%; box-sizing: border-box; resize: vertical;
+  background: var(--white); color: var(--text);
+  border: 1px solid var(--blue-line); border-radius: var(--cf-radius-sm);
+  padding: 8px 10px; font: 13px/1.6 inherit;
+}
+.bot-edit-box:focus { outline: 2px solid var(--blue-line); outline-offset: 1px; }
+.bot-edit-actions { display: flex; gap: 6px; margin-top: 8px; }

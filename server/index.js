@@ -736,10 +736,14 @@ function closestTo(name, rows) {
   return bestScore >= 0.5 ? best : null;
 }
 
-async function targetOf(command, openId) {
-  /* An instruction about a write-up is answered from the write-ups. They are
-     always named — there is no "the open one" on a page listing fifteen. */
+async function targetOf(command, openId, openDocId) {
+  /* An instruction about a write-up is answered from the write-ups, never
+     from the sets of scenarios. Unnamed, it means the one being read — and
+     failing that, nothing at all, so that the choices get offered rather
+     than a set of scenarios deleted in a write-up's place. */
   if (command.object === 'document') {
+    if (!command.name) return openDocId ? store.getDocument(openDocId) : null;
+
     const found = closestTo(command.name, await store.allDocuments());
     return found ? store.getDocument(found.id) : null;
   }
@@ -777,10 +781,10 @@ async function nearbySets(command, product) {
 }
 
 app.post('/api/assistant/command', wrap(async (req, res) => {
-  const { command, enhancementId } = req.body || {};
+  const { command, enhancementId, documentId } = req.body || {};
   if (!command || !command.kind) return res.status(400).json({ error: 'No change was asked for.' });
 
-  const target = await targetOf(command, enhancementId);
+  const target = await targetOf(command, enhancementId, documentId);
   if (!target) {
     /* Pointing at a screenshot and saying "this one" is how anyone asks, and
        nothing here can see where the arrow points. Rather than refuse, say
@@ -991,7 +995,7 @@ const chatUpload = multer({
 // The in-tool assistant: answers questions about what this tool holds, and
 // reads whatever is attached to the message.
 app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
-  const { question, currentProduct, currentEnhancement } = req.body || {};
+  const { question, currentProduct, currentEnhancement, currentDocument } = req.body || {};
 
   const weight = (req.files || []).reduce((sum, f) => sum + (f.size || 0), 0);
   if (weight > TOTAL_UPLOAD_BYTES) {
@@ -1016,26 +1020,38 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
      model: it has to mean the same thing every time it is given. */
   const command = parseCommand(question);
   if (command) {
-    const target = await targetOf(command, open ? open.id : null);
+    const target = await targetOf(command, open ? open.id : null, currentDocument);
 
     if (!target) {
       const near = await nearbySets(command, currentProduct);
+
+      /* Asked about a write-up, the choices offered are write-ups. Offering
+         sets of scenarios instead is how "delete this document" ends up
+         deleting forty-three scenarios. */
+      const thing = command.object === 'document' ? 'write-up' : 'set';
+
       return res.json({
         answer: near.length
           ? (command.name
-            ? `There is no set called "${command.name}". Did you mean one of these?`
-            : 'Which set did you mean?')
-          : 'I cannot tell which set you mean. Open it, or give me its name.',
+            ? `There is no ${thing} called "${command.name}". Did you mean one of these?`
+            : `Which ${thing} did you mean?`)
+          : `I cannot tell which ${thing} you mean. Open it, or give me its name.`,
         command,
         target: null,
-        choices: near.map((e) => ({ id: e.id, name: e.name, product: e.product, scenarioCount: e.scenarioCount })),
+        choices: near.map((e) => ({
+          id: e.id,
+          name: e.name,
+          product: e.product,
+          scenarioCount: e.scenarioCount,
+          kind: command.object === 'document' ? 'document' : 'set',
+        })),
         model: 'built-in',
         provider: 'local',
       });
     }
 
     return res.json({
-      answer: describeCommand(command, { enhancementName: target.name }),
+      answer: describeCommand(command, { enhancementName: target.name, documentName: target.name }),
       command,
       target: { id: target.id, name: target.name, product: target.product },
       model: 'built-in',
