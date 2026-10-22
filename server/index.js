@@ -16,7 +16,7 @@ const { extractScenarios } = require('./parse');
  * one of those should stay the scenario it is.
  */
 const LABELLED_SHEETS = new Set(['diy']);
-const { askAssistant, guessProduct } = require('./assistant');
+const { askAssistant, guessProduct, justFileIt } = require('./assistant');
 const attachments = require('./attachments');
 const { writeWalkthrough, wantsAGuide } = require('./walkthrough');
 const { whichOneIsShown, picturesIn } = require('./pointing');
@@ -1198,7 +1198,9 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
      never passed on to be answered some other way: "delete this document",
      not understood, used to come back as nineteen test scenarios about
      deleting documents, filed under a set named after the sentence. */
-  if (readsAsAnInstruction(question)) {
+  /* A message carrying a file is an upload, whatever else it says. Only a
+     message with nothing attached can be an instruction that went unread. */
+  if (!(req.files || []).length && readsAsAnInstruction(question)) {
     const things = await store.allDocuments();
     const sets = await store.allEnhancements();
     const here = currentProduct
@@ -1230,6 +1232,29 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
   const filed = await keepWriteUps(req.files, {
     product: guessProduct(String(question || ''), (open && open.product) || currentProduct),
   });
+
+  /* Asked to keep it, and nothing else. Say where it went and stop — drafting
+     scenarios nobody asked for, off a write-up that was only being filed, is
+     a lot to happen to somebody who wanted a file kept. */
+  if (filed.length && justFileIt(question)) {
+    const labels = await store.listProducts();
+    const where = (key) => {
+      const found = labels.find((p) => p.key === key);
+      return found ? found.label : 'no product';
+    };
+
+    return res.json({
+      answer: [
+        filed.map((d) => `"${d.name}" is filed under ${where(d.product)}.`).join('\n'),
+        '',
+        'Say the word and I will write test scenarios from what it specifies.',
+      ].join('\n'),
+      documents: filed,
+      attachments: (await attachments.readAll(req.files)).map(({ name, kind, note }) => ({ name, kind, note })),
+      model: 'built-in',
+      provider: 'local',
+    });
+  }
 
   /* A recording of someone working through the product, together with a
      request to write it up, is a different job from a question about it:

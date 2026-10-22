@@ -21,6 +21,7 @@ const SUITES = [
   ['typos', 'typotest.js', 'typed in a hurry, still understood'],
   ['documents', 'deltest.js', 'say document and a document goes'],
   ['pointing', 'pointtest.js', '"this one", said while pointing at a screenshot'],
+  ['filing', 'filetest.js', 'asked to keep a write-up, it keeps the write-up'],
   ['source', 'sourcetest.js', 'the write-up you attached is what it drafts from'],
   ['contents', 'insidetest.js', 'scenarios for what the write-up says'],
   ['per write-up', 'persetest.js', 'a set each, when a set each is asked for'],

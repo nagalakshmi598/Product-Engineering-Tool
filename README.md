@@ -220,6 +220,7 @@ spent.
 | `typotest.js` | Typed in a hurry, still understood — and never silently turned into something else |
 | `deltest.js` | Say document and a document goes; say scenarios and scenarios go |
 | `pointtest.js` | "This one", said while pointing at a screenshot |
+| `filetest.js` | Asked to keep a write-up, it keeps the write-up — where you said, and nothing more |
 | `sourcetest.js` | The write-up you attached is the one it drafts from |
 | `insidetest.js` | Scenarios come from what the write-up says, not from what the tool does with it |
 | `persetest.js` | A set each, when a set each is asked for |

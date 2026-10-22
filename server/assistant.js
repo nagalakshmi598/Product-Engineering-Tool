@@ -542,6 +542,27 @@ function wantsScenarios(q) {
   return DRAFT_VERBS.test(q) || /\b(scenarios?|test cases?|sceanrios?)\s+(for|on|about)\b/.test(q);
 }
 
+/**
+ * Asked to put a write-up in the tool, and nothing more.
+ *
+ * "Upload this document in content" is one instruction with one outcome: the
+ * write-up is filed. It used to be read as a feature being described, and
+ * came back as nine test scenarios saved under a product nobody mentioned —
+ * which is a great deal to happen to somebody who asked for a file to be
+ * kept.
+ *
+ * Asking for both in one breath — "upload this and write scenarios" — still
+ * does both.
+ */
+const FILING = /^(?:please\s+)?(?:upload|save|keep|file|store|add|put|attach)\b/i;
+/* "write-up" is the thing being filed, not a request to write anything. */
+const WANTS_MORE_THAN_FILING = /\b(?:scenarios?|test\s*cases?|draft|write(?!-?ups?\b)|generate|describe|summar)/i;
+
+function justFileIt(question) {
+  const q = String(question || '').trim();
+  return FILING.test(q) && !WANTS_MORE_THAN_FILING.test(q);
+}
+
 /** Naming a feature is a request for scenarios too — no keyword needed. */
 function isDraftRequest(q) {
   if (wantsScenarios(q)) return true;
@@ -1317,6 +1338,35 @@ const PRODUCT_NAMED = {
   message: /\bmessage (?:migration|product)\b/,
 };
 
+/*
+ * Saying where something goes: "upload this document in content", "file it
+ * under Email", "put this in data sprawl".
+ *
+ * This is said about the tool, not about the feature, so it beats everything
+ * else — including the product whose page happens to be open, which is what
+ * it used to lose to. Somebody standing on Message and saying "in content"
+ * means content.
+ *
+ * Anchored at the end, because that is where the destination goes. "Write
+ * scenarios for content sprawl" names no destination and must not be read as
+ * naming one.
+ */
+const PUT_IT_IN = new RegExp(
+  '\\b(?:in|into|under|to|on)\\s+(?:the\\s+)?'
+    + '(message|email|content|data[\\s-]?sprawl|diy)'
+    + '(?:\\s+(?:product|tab|page|section|migration))?\\s*[.!]?\\s*$',
+  'i'
+);
+
+/** The product an instruction says to put something in, or null. */
+function productSaidOutright(text) {
+  const found = PUT_IT_IN.exec(String(text || ''));
+  if (!found) return null;
+
+  const key = found[1].toLowerCase().replace(/[\s-]/g, '');
+  return key === 'datasprawl' ? 'datasprawl' : key;
+}
+
 /**
  * The product a drafted feature belongs under.
  *
@@ -1327,6 +1377,10 @@ const PRODUCT_NAMED = {
  */
 function guessProduct(feature, fallback) {
   const q = String(feature).toLowerCase();
+
+  /* Told where it goes, it goes there. */
+  const told = productSaidOutright(q);
+  if (told && PRODUCT_HINTS[told]) return told;
 
   const named = Object.keys(PRODUCT_NAMED).find((key) => PRODUCT_NAMED[key].test(q));
   if (named) return named;
@@ -1973,4 +2027,4 @@ async function askAssistant({
   }
 }
 
-module.exports = { askAssistant, wantsThemApart, writeUpsNamed, buildContext, parseDraft, guessProduct, enhancementName, titleFor };
+module.exports = { askAssistant, wantsThemApart, writeUpsNamed, justFileIt, productSaidOutright, buildContext, parseDraft, guessProduct, enhancementName, titleFor };

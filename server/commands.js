@@ -291,7 +291,15 @@ const A_THING_IN_THE_TOOL = new RegExp(
 function readsAsAnInstruction(question) {
   const { text } = correctInstruction(String(question || '').trim());
   if (text.length > 160) return false;          // a paragraph is not an order
-  return MANAGING.test(text) && A_THING_IN_THE_TOOL.test(text);
+
+  const verb = MANAGING.exec(text);
+  if (!verb) return false;
+
+  /* The thing has to be named somewhere other than in the verb. "File this
+     under Email" is a verb and a destination and no noun at all — reading its
+     own "file" as the thing meant an upload was turned down as an instruction
+     nobody could make out. */
+  return A_THING_IN_THE_TOOL.test(text.slice(verb[0].length));
 }
 
 function parseCommand(question) {
