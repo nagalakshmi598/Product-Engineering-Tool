@@ -28,43 +28,70 @@ const { writeGuide } = require('./guides');
    is usually seen whole. */
 const PER_BATCH = 8;
 
-/* A step may cover more than one screen — the dialog, then what it did — but
-   a step covering nine is a model that has stopped reading. */
-const MAX_SHOTS_PER_STEP = 3;
+/* A step may cover more than one screen — the dialog, then what it did, then
+   the toast confirming it. Past that it is a model that has stopped reading
+   and is sweeping screens into one heap. */
+const MAX_SHOTS_PER_STEP = 4;
 
 const SYSTEM = `You are writing a product walkthrough from a screen recording,
-in the house style of CloudFuze's migration guides.
+in the house style of CloudFuze's migration guides — the ones that run from
+signing in to delta migration, a numbered step per action, the screen it was
+done on underneath it.
 
 You are shown consecutive screens from the recording, in order. Each is
 labelled with its number and the second it was taken at.
 
-Write the steps a reader would follow to do the same thing themselves.
+Write what a reader would follow to do the same thing themselves.
 
 HOW A STEP READS
 - The title is a short noun phrase naming the action: "Sign In", "Create a
-  Workspace", "Add the Source Cloud", "Verify the Connection", "Configure
-  Migration Options", "Enable Delta Migration".
-- The text is one to three sentences, addressed to the reader, saying what to
-  do and what happens: "From the Workspaces page, click New Workspace, enter
-  the Workspace Name and Tenant Name, then click Create Workspace to create a
-  dedicated migration project."
+  Workspace", "Add the Source Cloud", "Authenticate the Source Account",
+  "Verify the Connection", "Select the Workload", "Review User Mapping",
+  "Import User Mapping CSV", "Validate the Mapping", "Create a Wave",
+  "Assign Users to the Wave", "Configure Migration Options",
+  "Enable Delta Migration".
+- The text is two to four sentences, addressed to the reader, saying where
+  they are, what to do, what to enter, and what appears as a result:
+  "From the Workspaces page, click New Workspace, enter the Workspace Name
+  and Tenant Name, then click Create Workspace to create a dedicated
+  migration project. A confirmation appears and you are taken to the Clouds
+  & Accounts page of the Migration Wizard."
+- Say what is actually on the screen: the values typed into fields, the
+  counts and statuses shown, the message in a toast, the name of the page
+  reached. That detail is the whole use of the guide.
 - Put the exact on-screen label of anything clicked, typed into, or read in
   **double asterisks**: buttons, tabs, fields, statuses, page names. Take the
   label from the screen, letter for letter. Never invent one.
-- Where a screen offers a list of options or settings, use bullets, one per
-  option, each naming the option and saying what it does.
+- Where a screen offers a list of options, settings, checks or results, use
+  bullets — one per item, each naming it and saying what it does or shows.
+  A page of toggles, a list of preflight checks, a results panel of counts:
+  all of these are bullets.
 
-WHICH SCREENS BECOME STEPS
+STEPS AND SECTIONS
+- Most of what you write is a numbered step: an action the reader performs.
+- Some of it is not. Where the screen is reporting rather than asking — a
+  migration running, a progress page filling in, a completion summary, a set
+  of checks that passed — write it as a section instead, by setting
+  "section": true. A section has a title and text like a step, and bullets
+  where there is a list, but it is not numbered, because the reader does not
+  do it. "Migration Progress", "One-Time Migration Completed", "Verify Batch
+  Readiness", "Verify Delta Pre-Checks", "Delta Migration Initiated" are all
+  sections.
+
+WHICH SCREENS BELONG TO WHAT
 - Consecutive screens showing the same thing — a spinner, a page mid-load, a
-  cursor moved — are one step, or none.
+  cursor moved — belong to one step together.
 - Group the screens of one action into one step: list their numbers in
-  "frames", in order. A dialog and its result belong together.
-- A screen showing nothing a reader needs is left out entirely.
-- Never describe a screen you were not shown, and never carry on past the last
-  one you were given.
+  "frames", in order. A dialog, what it did, and the message confirming it
+  belong together.
+- Account for every screen you are shown. A screen that adds nothing of its
+  own still belongs to the step it happened during — put its number in that
+  step's frames rather than leaving it out.
+- Never describe a screen you were not shown, and never carry on past the
+  last one you were given.
 
 Return JSON only, no prose and no code fence:
-{"steps":[{"frames":[1,2],"title":"Create a Workspace","text":"From the ...","bullets":[]}]}`;
+{"steps":[{"frames":[1,2],"title":"Create a Workspace","text":"From the ...","bullets":[],"section":false}]}`;
 
 const TITLE_SYSTEM = `You name documents. Given the steps of a walkthrough,
 return JSON only: {"title":"...","intro":"..."}.
@@ -244,7 +271,7 @@ async function stepsFrom(batch, { offset, done, question }) {
   const parsed = readJson(await ask({ system: SYSTEM, text: lines.join('\n'), images: batch }));
   const steps = parsed && Array.isArray(parsed.steps) ? parsed.steps : [];
 
-  return steps
+  const written = steps
     .map((step) => {
       /* Frame numbers are the model's one chance to get the screenshot wrong,
          so they are checked against the batch rather than trusted. */
@@ -252,18 +279,51 @@ async function stepsFrom(batch, { offset, done, question }) {
         .map((n) => Number(n))
         .filter((n) => Number.isInteger(n) && n >= 1 && n <= batch.length)
         .filter((n, i, all) => all.indexOf(n) === i)
-        .sort((a, b) => a - b)
-        .slice(0, MAX_SHOTS_PER_STEP);
+        .sort((a, b) => a - b);
 
       return {
         title: String(step.title || '').trim(),
         text: String(step.text || '').trim(),
+        section: step.section === true,
         bullets: (Array.isArray(step.bullets) ? step.bullets : []).map((b) => String(b || '').trim()).filter(Boolean),
-        screenshots: picked.map((n) => batch[n - 1].bytes),
-        at: picked.length ? batch[picked[0] - 1].at : batch[0].at,
+        frames: picked,
       };
     })
     .filter((step) => step.title && step.text);
+
+  if (!written.length) return [];
+
+  /* Every screen goes in somewhere.
+   *
+   * A guide is being written so that nobody has to take the screenshots by
+   * hand, and a screen dropped because no step claimed it is a screenshot
+   * somebody has to go and take. Each unclaimed screen joins the step it
+   * happened during — the last one that started before it — and anything
+   * before the first step joins that. */
+  const claimed = new Set(written.flatMap((step) => step.frames));
+
+  for (let n = 1; n <= batch.length; n += 1) {
+    if (claimed.has(n)) continue;
+
+    let home = written[0];
+    written.forEach((step) => {
+      if (step.frames.length && step.frames[0] < n) home = step;
+    });
+
+    home.frames = [...home.frames, n].sort((a, b) => a - b);
+  }
+
+  return written.map((step) => ({
+    title: step.title,
+    text: step.text,
+    section: step.section,
+    bullets: step.bullets,
+    /* A step carrying the whole batch has swept it into a heap; past a few
+       screens the extras go under the step as they came, which is still
+       every screen, in order. */
+    screenshots: step.frames.slice(0, MAX_SHOTS_PER_STEP + 4).map((n) => batch[n - 1].bytes),
+    at: step.frames.length ? batch[step.frames[0] - 1].at : batch[0].at,
+  }));
 }
 
 /** What to call the finished thing. */
@@ -330,8 +390,8 @@ async function writeWalkthrough({ clips, question = '', product = '' }) {
     title,
     product,
     intro,
-    steps: steps.map(({ title: stepTitle, text, bullets, screenshots }) => ({
-      title: stepTitle, text, bullets, screenshots,
+    steps: steps.map(({ title: stepTitle, text, bullets, screenshots, section }) => ({
+      title: stepTitle, text, bullets, screenshots, section,
     })),
   });
 

@@ -93,8 +93,21 @@ async function writeGuide({ title, product = '', intro = '', steps = [] }) {
 
   let shots = 0;
 
+  /* Numbered steps are the things the reader does. A page reporting back —
+     a migration running, a set of checks that passed, a completion summary —
+     is a section with a heading of its own, which is how the guides this
+     follows are written. It does not take a number, because nobody does it. */
+  let number = 0;
+
   steps.forEach((step, i) => {
-    lines.push(`<h3>Step ${i + 1}: ${richText(step.title || 'Step')}</h3>`);
+    const heading = richText(step.title || 'Step');
+    if (step.section) {
+      lines.push(`<h3>${heading}</h3>`);
+    } else {
+      number += 1;
+      lines.push(`<h3>Step ${number}: ${heading}</h3>`);
+    }
+
     if (step.text) lines.push(`<p>${richText(step.text)}</p>`);
 
     /* Some steps are a screen of switches rather than a single click, and

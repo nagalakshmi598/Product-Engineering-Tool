@@ -51,6 +51,14 @@ class FakeOpenAI {
                       text: 'From the **Workspaces** page, click **New Workspace** --> **Create Workspace**.',
                       bullets: ['**From Date** - the date emails are migrated from.', '**Migrate Rules** - recreate Gmail rules in Outlook.'],
                     },
+                    /* a page that reports rather than asks: no step number */
+                    {
+                      frames: [1],
+                      title: `Migration Progress ${turn}`,
+                      text: 'The migration starts automatically and the **Migration Progress** page opens.',
+                      bullets: [],
+                      section: true,
+                    },
                     { frames: [1], title: '', text: 'dropped: no title' },
                   ],
                 }) + '\n```',

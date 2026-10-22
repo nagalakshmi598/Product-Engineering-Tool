@@ -103,6 +103,21 @@ async function send(question, video, name = 'migration.mp4') {
     record('a step spanning two screens keeps both',
       /image-2\.jpg/.test(html) && /image-3\.jpg/.test(html), '');
     record('a step with no words is left out', !/<h3>Step \d+: <\/h3>/.test(html), '');
+
+    /* ---- the shape the house guides are written in ---- */
+    record('a page that reports is a section, not a step',
+      /<h3>Migration Progress 1<\/h3>/.test(html), '');
+    record('and takes no step number',
+      !/<h3>Step \d+: Migration Progress/.test(html), '');
+    record('the numbering skips it and runs straight',
+      ['Step 1:', 'Step 2:', 'Step 3:', 'Step 4:'].every((n) => html.includes(`<h3>${n} `))
+        && !html.includes('<h3>Step 0:'),
+      (html.match(/<h3>Step \d+:/g) || []).join(' '));
+
+    /* ---- every screen is kept, because that is the point of it ---- */
+    record('every screen of the recording is in the guide',
+      guide.screenshots >= guide.screens,
+      `${guide.screenshots} screenshots for ${guide.screens} screens`);
     record('an invented frame number is ignored', !/image-999/.test(html), '');
 
     /* ---- the screenshots are actually served ---- */
