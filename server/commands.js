@@ -1,5 +1,7 @@
 'use strict';
 
+const { correctInstruction } = require('./words');
+
 /**
  * Asking the tool to change something, in the words people use.
  *
@@ -255,8 +257,39 @@ const NEEDS_CONFIRMING = new Set([
  *
  * @returns {null|{kind: string, confirm: boolean, ...}}
  */
+/**
+ * An instruction to manage what the tool holds, whether or not it parsed.
+ *
+ * "Delete this document" typed as "delte this document" used to reach the
+ * drafting path and come back as nineteen test scenarios about deleting a
+ * document, filed under a set named after the typo. Spelling is fixed above,
+ * but no list of corrections covers every way a sentence can be put, so this
+ * is the backstop: an instruction that was not understood is said to be not
+ * understood, rather than quietly turned into something else.
+ *
+ * Only the managing verbs. "Write scenarios for the Egnyte write-up" is a
+ * drafting request that mentions a write-up, and it is not this.
+ */
+const MANAGING = new RegExp(
+  '^(?:please\\s+)?(?:can\\s+you\\s+|could\\s+you\\s+)?'
+    + '(?:delete|remove|drop|get\\s+rid\\s+of|rename|move|file|refile|clear|empty|archive)\\b',
+  'i'
+);
+
+const A_THING_IN_THE_TOOL = new RegExp(
+  `\\b(?:${A_DOCUMENT}|scenarios?|sets?|enhancements?|columns?|rows?|test\\s*cases?|section|status)\\b`,
+  'i'
+);
+
+function readsAsAnInstruction(question) {
+  const { text } = correctInstruction(String(question || '').trim());
+  if (text.length > 160) return false;          // a paragraph is not an order
+  return MANAGING.test(text) && A_THING_IN_THE_TOOL.test(text);
+}
+
 function parseCommand(question) {
-  const text = String(question || '').trim();
+  /* Read what was meant, not what was typed. */
+  const text = correctInstruction(String(question || '').trim()).text;
   if (!text) return null;
 
   /* "Can you delete scenario 5?" is an instruction wearing a question mark;
@@ -351,4 +384,6 @@ function describeCommand(command, context = {}) {
   }
 }
 
-module.exports = { parseCommand, describeCommand, readNumbers, STATUS_WORDS };
+module.exports = {
+  parseCommand, describeCommand, readsAsAnInstruction, readNumbers, STATUS_WORDS,
+};

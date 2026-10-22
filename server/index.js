@@ -21,7 +21,7 @@ const attachments = require('./attachments');
 const { writeWalkthrough, wantsAGuide } = require('./walkthrough');
 const { whichOneIsShown, picturesIn } = require('./pointing');
 const { MAX_GUIDE_FRAMES } = require('./video');
-const { parseCommand, describeCommand } = require('./commands');
+const { parseCommand, describeCommand, readsAsAnInstruction } = require('./commands');
 const { tidyName } = require('./names');
 const { generateTestCases, hasApiKey, activeProvider, keyProblem } = require('./testcases');
 const testCaseJobs = require('./testcasejobs');
@@ -1189,6 +1189,37 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
         + describeCommand(command, { enhancementName: target.name, documentName: target.name }),
       command,
       target: { id: target.id, name: target.name, product: target.product },
+      model: 'built-in',
+      provider: 'local',
+    });
+  }
+
+  /* An instruction that could not be read is said to be unreadable. It is
+     never passed on to be answered some other way: "delete this document",
+     not understood, used to come back as nineteen test scenarios about
+     deleting documents, filed under a set named after the sentence. */
+  if (readsAsAnInstruction(question)) {
+    const things = await store.allDocuments();
+    const sets = await store.allEnhancements();
+    const here = currentProduct
+      ? things.filter((d) => d.product === currentProduct)
+      : things;
+
+    return res.json({
+      answer: [
+        'That reads as an instruction, but I could not tell which one.',
+        '',
+        'Say it one of these ways and I will do it:',
+        '  • delete the <name> document',
+        '  • delete the <name> set',
+        '  • delete scenarios 4, 5 and 6',
+        '  • remove the <name> column',
+        '',
+        `There ${things.length === 1 ? 'is' : 'are'} ${plural(things.length, 'write-up')} `
+          + `and ${plural(sets.length, 'set')} in the tool`
+          + (here.length !== things.length ? `, ${here.length} of them on this page` : '')
+          + '. Name the one you mean, or open it and say "this one".',
+      ].join('\n'),
       model: 'built-in',
       provider: 'local',
     });
