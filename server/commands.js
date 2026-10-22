@@ -150,6 +150,43 @@ const PATTERNS = [
     read: (m) => ({ name: namedOrOpen(m[1] || m[2]), to: tidyLabel(m[3]), object: 'document' }),
   },
 
+  /* generate test cases for the Private Channels set */
+  {
+    kind: 'make-test-cases',
+    re: new RegExp(
+      '\\b(?:(re)-?(?:generate|write|do|run)|generate|write|create|produce|make|add|fill\\s+in|prepare)\\s+'
+        + '(?:the\\s+|all\\s+(?:the\\s+)?|detailed\\s+|missing\\s+)*test\\s*cases?'
+        + '(?:\\s+(?:for|on|in|against|to)\\s+(?:all\\s+(?:the\\s+)?(?:scenarios?|rows?)\\s+(?:in|of|for)\\s+)?'
+          + `(?:the\\s+)?${NAMED})?\\s*$`,
+      'i'
+    ),
+    read: (m) => ({ name: m[2] ? namedOrOpen(m[2]) : null, again: Boolean(m[1]) }),
+  },
+
+  /* add to the Egnyte write-up: the scan also reports shared links */
+  {
+    kind: 'append-document',
+    re: new RegExp(
+      '\\b(?:add|append|put)\\s+(?:this\\s+|the\\s+following\\s+)?(?:to|into|onto|at\\s+the\\s+end\\s+of)\\s+'
+        + `(?:the\\s+)?${NAMED}\\s+${A_DOCUMENT}\\s*[:\\-—]\\s*([\\s\\S]+)`,
+      'i'
+    ),
+    read: (m) => ({ name: namedOrOpen(m[1]), text: String(m[2]).trim(), object: 'document' }),
+  },
+
+  /* in the Egnyte write-up change "180 days" to "90 days" */
+  {
+    kind: 'replace-in-document',
+    re: new RegExp(
+      `\\b(?:in|on)\\s+(?:the\\s+)?${NAMED}\\s+${A_DOCUMENT}[,\\s]+`
+        + '(?:change|replace|correct|swap)\\s+["\'“](.+?)["\'”]\\s+(?:to|with|for)\\s+["\'“](.*?)["\'”]\\s*$',
+      'i'
+    ),
+    read: (m) => ({
+      name: namedOrOpen(m[1]), from: m[2], to: m[3], object: 'document',
+    }),
+  },
+
   /* mark 12 and 14 as failed */
   {
     kind: 'set-status',
@@ -209,7 +246,9 @@ const PATTERNS = [
 
 /* Deleting is the one that cannot be taken back, so it is put to the person
    before it happens. The rest are a click to undo and are simply done. */
-const NEEDS_CONFIRMING = new Set(['delete-set', 'delete-scenarios', 'delete-document', 'clear-column']);
+const NEEDS_CONFIRMING = new Set([
+  'delete-set', 'delete-scenarios', 'delete-document', 'clear-column', 'replace-in-document',
+]);
 
 /**
  * Read a message as an instruction to change something.
@@ -258,8 +297,16 @@ function parseCommand(question) {
       && !MENTIONS_SCENARIOS.test(instruction)) continue;
     if (/^(?:rename|move)-document$/.test(pattern.kind) && !read.to) continue;
     if (pattern.kind === 'clear-column' && !read.column) continue;
+    if (pattern.kind === 'append-document' && !read.text) continue;
+    if (pattern.kind === 'replace-in-document' && !read.from) continue;
 
-    return { kind: pattern.kind, confirm: NEEDS_CONFIRMING.has(pattern.kind), ...read };
+    /* Writing test cases where there are none costs time and nothing else.
+       Writing them again throws away the ones that are there, so that one is
+       asked about. */
+    const confirm = NEEDS_CONFIRMING.has(pattern.kind)
+      || (pattern.kind === 'make-test-cases' && Boolean(read.again));
+
+    return { kind: pattern.kind, confirm, ...read };
   }
 
   return null;
@@ -285,6 +332,14 @@ function describeCommand(command, context = {}) {
       return `Rename the write-up "${command.name}" to "${command.to}".`;
     case 'move-document':
       return `File the write-up "${command.name}" under ${command.to}.`;
+    case 'make-test-cases':
+      return command.again
+        ? `Write the test cases again for every scenario${where || ''}, replacing the ones there now. This cannot be undone.`
+        : `Write test cases for the scenarios${where || ''} that have none yet.`;
+    case 'append-document':
+      return `Add that to the end of the write-up "${command.name}".`;
+    case 'replace-in-document':
+      return `In the write-up "${command.name}", change "${command.from}" to "${command.to}". This cannot be undone.`;
     case 'clear-column':
       return `Empty the ${command.column} column${where}, on every row. This cannot be undone.`;
     case 'rename-set':

@@ -2288,6 +2288,17 @@ async function runCommand(command, target) {
     // the page is showing what just changed, so bring it up to date
     await loadProducts();
 
+    /* Writing test cases runs on past this reply. Open the set it is writing
+       into, so the person watches them arrive instead of being told they are
+       coming and left on a page that does not show them. */
+    if (result.job && result.enhancementId) {
+      if (!(state.view === 'scenarios' && state.enhancement && state.enhancement.id === result.enhancementId)) {
+        await openEnhancement(result.enhancementId);
+      }
+      if (result.job.state === 'running') pollTestCaseRun(result.enhancementId);
+      return;
+    }
+
     /* A write-up lives on the Documents page, so that is what needs redrawing
        — the scenario views know nothing about it. */
     if (result.isDocument) {
@@ -2378,6 +2389,14 @@ function describeChosen(command, target) {
       return `Rename the write-up "${target.name}" to "${command.to}".`;
     case 'move-document':
       return `File the write-up "${target.name}" under ${command.to}.`;
+    case 'make-test-cases':
+      return command.again
+        ? `Write the test cases again for every scenario in "${target.name}", replacing the ones there now. This cannot be undone.`
+        : `Write test cases for the scenarios in "${target.name}" that have none yet.`;
+    case 'append-document':
+      return `Add that to the end of the write-up "${target.name}".`;
+    case 'replace-in-document':
+      return `In the write-up "${target.name}", change "${command.from}" to "${command.to}". This cannot be undone.`;
     case 'clear-column':
       return `Empty the ${command.column} column in "${target.name}", on every row. This cannot be undone.`;
     case 'delete-set':
@@ -2404,7 +2423,11 @@ function askToConfirm(command, target) {
   go.type = 'button';
   go.className = 'bot-action is-danger';
   // the button says what it is about to do, which is not always a delete
-  go.textContent = command.kind === 'clear-column' ? 'Yes, empty it' : 'Yes, delete';
+  go.textContent = {
+    'clear-column': 'Yes, empty it',
+    'make-test-cases': 'Yes, write them again',
+    'replace-in-document': 'Yes, change it',
+  }[command.kind] || 'Yes, delete';
 
   const stop = document.createElement('button');
   stop.type = 'button';

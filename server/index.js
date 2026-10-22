@@ -31,6 +31,7 @@ const {
   documentFilePath,
   removeDocumentFiles,
   sanitizeHtml,
+  escapeHtml,
 } = require('./documents');
 
 const PORT = process.env.PORT || 4310;
@@ -824,11 +825,19 @@ app.post('/api/assistant/command', wrap(async (req, res) => {
        what there is to choose from — one of them is almost always meant. */
     const near = await nearbySets(command, req.body.product);
 
+    const thing = command.object === 'document' ? 'write-up' : 'set';
+
     return res.status(404).json({
       error: command.name
-        ? `There is no set called "${command.name}".`
-        : 'Which set did you mean?',
-      choices: near.map((e) => ({ id: e.id, name: e.name, product: e.product, scenarioCount: e.scenarioCount })),
+        ? `There is no ${thing} called "${command.name}".`
+        : `Which ${thing} did you mean?`,
+      choices: near.map((e) => ({
+        id: e.id,
+        name: e.name,
+        product: e.product,
+        scenarioCount: e.scenarioCount,
+        kind: command.object === 'document' ? 'document' : 'set',
+      })),
     });
   }
 
@@ -842,6 +851,48 @@ app.post('/api/assistant/command', wrap(async (req, res) => {
       gone: true,
       isDocument: true,
       product: target.product,
+    });
+  }
+
+  /* A write-up is read as much as it is filed, and what it says goes out of
+     date — a limit changes, a message is reworded. Correcting that from the
+     chat beats downloading it, editing it and uploading it again. */
+  if (command.kind === 'append-document') {
+    const added = `<p>${escapeHtml(command.text)}</p>`;
+    const updated = await store.updateDocument(target.id, {
+      html: `${target.html || ''}\n${added}`,
+    });
+
+    return res.json({
+      done: `Added to "${updated.name}".`,
+      isDocument: true,
+      document: store.documentSummary(updated),
+    });
+  }
+
+  if (command.kind === 'replace-in-document') {
+    const before = target.html || '';
+    const hits = before.split(escapeHtml(command.from)).length - 1
+      + (escapeHtml(command.from) === command.from ? 0 : before.split(command.from).length - 1);
+
+    if (!hits) {
+      return res.status(404).json({
+        error: `"${command.from}" does not appear in "${target.name}".`,
+      });
+    }
+
+    /* Escaped and plain both, because what is stored went through escaping
+       and what was typed did not. */
+    const after = before
+      .split(escapeHtml(command.from)).join(escapeHtml(command.to))
+      .split(command.from).join(command.to);
+
+    const updated = await store.updateDocument(target.id, { html: after });
+
+    return res.json({
+      done: `Changed ${plural(hits, 'mention')} of "${command.from}" in "${updated.name}".`,
+      isDocument: true,
+      document: store.documentSummary(updated),
     });
   }
 
@@ -913,6 +964,29 @@ app.post('/api/assistant/command', wrap(async (req, res) => {
     return res.json({
       done: `Scenario ${command.sno} now reads: ${result.after}`,
       enhancement: store.summary(result.enhancement),
+    });
+  }
+
+  /* Writing the test cases is the long job in this tool — one model call per
+     scenario, hundreds of them — so it is started and reported on rather than
+     waited for. The page already knows how to follow one. */
+  if (command.kind === 'make-test-cases') {
+    const job = await testCaseJobs.start(target.id, { regenerate: Boolean(command.again) });
+
+    if (!job.total) {
+      return res.json({
+        done: `Every scenario in "${target.name}" already has test cases. `
+          + 'Say "regenerate test cases" to write them again.',
+        enhancementId: target.id,
+        job,
+      });
+    }
+
+    return res.json({
+      done: `Writing test cases for ${plural(job.total, 'scenario')} in "${target.name}" now — `
+        + 'they will fill in on the page as they come back.',
+      enhancementId: target.id,
+      job,
     });
   }
 

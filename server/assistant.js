@@ -920,18 +920,47 @@ async function answerLocally(question) {
   /* ---- drafting scenarios for a named feature ---- */
   if (wantsScenarios(q)) return draftScenarios(q, data);
 
-  /* ---- what can you do ---- */
-  if (/^(help|what can you do|what do you do|hi|hello|hey)\b/.test(q) || q.includes('what can you answer')) {
+  /* ---- what can you do ----
+     Asked often enough, and answered badly for long enough, that the list is
+     worth keeping right: everything this tool does can be done from here, and
+     people go on doing it by hand because nothing ever said so. */
+  if (/^(help|what can you do|what do you do|hi|hello|hey)\b/.test(q)
+      || /\bwhat can you (?:answer|help)/.test(q)
+      || /\b(?:what|which)\b.*\b(?:can|could|able to)\b.*\b(?:you|bot|agent)\b.*\bdo\b/.test(q)) {
     return [
-      'I answer questions about what is in this tool. For example:',
+      'Everything this tool does, you can ask me to do. Nothing here needs the buttons.',
+      '',
+      'WRITE-UPS',
+      '  • Attach one to a message and I file it under the right product',
+      '  • Rename the <name> document to <new name>',
+      '  • File the <name> document under Email',
+      '  • Add to the <name> document: <the sentence to add>',
+      '  • In the <name> document, change "180 days" to "90 days"',
+      '  • Delete the <name> document',
+      '',
+      'SCENARIOS',
+      '  • Write test scenarios for <feature>, or just describe the feature',
+      '  • Write scenarios for <write-up>, <write-up> and <write-up> separately',
+      '  • Mark 4 and 7 as failed',
+      '  • Change scenario 12 to: Verify that …',
+      '  • Delete scenarios 4, 5 and 6',
+      '  • Rename this to <new name>, or delete the <name> set',
+      '',
+      'TEST CASES',
+      '  • Generate test cases for <set> — or just "generate test cases" with one open',
+      '  • Regenerate test cases for <set>, to replace the ones there',
+      '',
+      'RECORDINGS',
+      '  • Attach a screen recording and say "make a document in that format"',
+      '    and I write it up step by step, with the screenshots',
+      '',
+      'AND ASKING',
       '  • How many scenarios are there? How many passed or failed?',
       '  • Which enhancement has the most scenarios?',
-      '  • Show the failed scenarios',
-      '  • Find scenarios about private channels',
       '  • Which enhancements have no test cases yet?',
-      '  • What documents do we have? What is <document> about?',
-      '  • Draft test scenarios for <feature>',
-      '  • Or just describe the feature and I will write scenarios for it',
+      '  • What is <document> about?',
+      '',
+      'Anything that cannot be undone, I put to you before I do it.',
     ].join('\n');
   }
 
