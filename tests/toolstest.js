@@ -238,6 +238,31 @@ function talk(url) {
     })()`);
 
     record('sending it calls off the answer in flight', resent.calledOff === true, '');
+
+    /* ---- the server being older than the code it was started from ----
+       Two rounds of "the fix is not working" were a server still running
+       what it had been started with, while the page was reloaded again and
+       again. Reloading cannot help with that, so this says which it is. */
+    const freshStart = await run(`(async () => {
+      const res = await fetch('/api/products');
+      return { stamped: /^[0-9a-f]{12}$/.test(res.headers.get('X-Tool-Build') || ''),
+               stale: res.headers.get('X-Tool-Stale') };
+    })()`);
+
+    record('every reply says which build served it', freshStart.stamped === true, '');
+    record('a server started from current code is not called stale',
+      freshStart.stale === null, String(freshStart.stale));
+
+    const warned = await run(`(() => {
+      noteStaleServer('server');
+      const bar = document.querySelector('.build-bar.is-stale');
+      return { shown: Boolean(bar), says: bar ? bar.textContent : '',
+               offersReload: bar ? bar.querySelectorAll('button').length : -1 };
+    })()`);
+
+    record('a stale server is called out', warned.shown === true, warned.says.slice(0, 54));
+    record('and it does not offer a reload, which would not help',
+      warned.offersReload === 0, `${warned.offersReload} buttons`);
     record('and the edited question goes instead',
       /what is a mailbox alias/.test(resent.asked) && !/what is email attribute/.test(resent.asked),
       resent.asked.slice(0, 60));

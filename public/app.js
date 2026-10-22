@@ -162,6 +162,7 @@ async function api(url, options) {
   }
 
   noteTheBuild(res.headers.get('X-Tool-Build'));
+  noteStaleServer(res.headers.get('X-Tool-Stale'));
 
   if (res.status === 204) return null;
   const data = await res.json().catch(() => ({}));
@@ -177,6 +178,27 @@ async function api(url, options) {
  * loaded this morning — and the symptom is a reply the old page cannot read.
  * Rather than leave that looking like a bug in the fix, say what it is.
  */
+/**
+ * The server is running code older than the files it was started from.
+ *
+ * Reloading the page will not help with this one, so it does not offer to:
+ * the server has to be restarted. Saying which of the two is wrong is the
+ * whole value of it — a fix that is on disk and not running looks exactly
+ * like a fix that does not work.
+ */
+let saidStale = false;
+
+function noteStaleServer(flag) {
+  if (flag !== 'server' || saidStale) return;
+  saidStale = true;
+
+  const bar = document.createElement('div');
+  bar.className = 'build-bar is-stale';
+  bar.innerHTML = '<span>The server is running older code than the files on disk. '
+    + 'Restart it (<code>npm start</code>) to pick up the changes.</span>';
+  document.body.appendChild(bar);
+}
+
 let loadedBuild = null;
 let saidSo = false;
 

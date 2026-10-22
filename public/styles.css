@@ -1145,3 +1145,10 @@ body {
   font: 600 12.5px/1.3 inherit;
 }
 .build-bar button:hover { background: var(--blue-tint); }
+
+/* the server, rather than the page, is the one that is behind */
+.build-bar.is-stale { background: var(--danger); }
+.build-bar.is-stale code {
+  background: rgb(255 255 255 / .2); border-radius: 4px;
+  padding: 1px 5px; font: 600 12px/1.3 ui-monospace, Menlo, Consolas, monospace;
+}

@@ -110,8 +110,42 @@ const BUILD = (() => {
   return sum.digest('hex').slice(0, 12);
 })();
 
+/*
+ * Whether this process is older than the code it was started from.
+ *
+ * Node reads a file once. A fix saved to disk changes nothing until the
+ * server is restarted, and the symptom is a tool that goes on behaving
+ * exactly as it did before the fix — which reads as the fix not working, and
+ * sends everyone looking in the wrong place. It cost two rounds of that to
+ * put this here.
+ *
+ * Checked by the clock rather than by reading the files, and not more than
+ * once every few seconds, because it runs on the way past every request.
+ */
+const BOOTED = Date.now();
+const SOURCE = path.join(__dirname);
+let staleAt = 0;
+let stale = false;
+
+function runningOldCode() {
+  const now = Date.now();
+  if (now - staleAt < 3000) return stale;
+  staleAt = now;
+
+  try {
+    stale = fs.readdirSync(SOURCE)
+      .filter((f) => f.endsWith('.js'))
+      .some((f) => fs.statSync(path.join(SOURCE, f)).mtimeMs > BOOTED);
+  } catch (err) {
+    stale = false;
+  }
+
+  return stale;
+}
+
 app.use('/api', (req, res, next) => {
   res.setHeader('X-Tool-Build', BUILD);
+  if (runningOldCode()) res.setHeader('X-Tool-Stale', 'server');
   next();
 });
 // no-cache so a UI change shows up on a plain refresh, without a hard reload

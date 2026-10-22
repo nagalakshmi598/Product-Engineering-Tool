@@ -201,7 +201,7 @@ See [samples/sample-test-scenarios.csv](samples/sample-test-scenarios.csv) for t
 ## Tests
 
 ```bash
-npm test                 # everything, about half a minute
+npm test                 # everything, about a minute
 npm test commands        # one suite, by name
 npm test typos documents # several
 ```
