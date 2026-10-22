@@ -1354,7 +1354,11 @@ const PRODUCT_NAMED = {
 const PUT_IT_IN = new RegExp(
   '\\b(?:in|into|under|to|on)\\s+(?:the\\s+)?'
     + '(message|email|content|data[\\s-]?sprawl|diy)'
-    + '(?:\\s+(?:product|tab|page|section|migration))?\\s*[.!]?\\s*$',
+    + '(?:\\s+(?:product|tab|page|section|migration))?'
+    /* where a destination ends: the sentence, a comma, or the next clause.
+       "In content" and "in content and write scenarios" both say content;
+       "for content sprawl" says nothing about where anything goes. */
+    + '(?=\\s*[.!,;]|\\s+(?:and|then|also)\\b|\\s*$)',
   'i'
 );
 
@@ -1664,7 +1668,9 @@ async function draftPerWriteUp(documents, { provider, model, history, system, qu
   let total = 0;
 
   for (const doc of documents) {
-    const text = toPlainText(doc.html);
+    /* A write-up off the shelf is stored as HTML; one still attached to the
+       message is plain text already. Either is the same thing to read. */
+    const text = doc.text != null ? String(doc.text) : toPlainText(doc.html);
     const ask = [
       `Write test scenarios for the feature specified in this write-up.`,
       '',
@@ -1825,9 +1831,25 @@ async function askAssistant({
    *
    * Naming one beats having one open, for the same reason: it is said rather
    * than inferred. */
-  const justTheOne = !files.length && !perWriteUp && drafting
-    ? (theNamedOne || theOpenOne)
+  /* A write-up attached to the message is what the scenarios are for.
+   *
+   * It used to go down the general path, where the model is given the whole
+   * tool and the sentence that introduced the file — and the sentence won.
+   * "Upload this document in content" produced scenarios about clicking
+   * Upload Document and picking a file off a device, from a write-up about
+   * migrating Confluence to SharePoint. What is in the write-up is the thing
+   * being asked about; the sentence only said where to put it. */
+  const attachedWriteUps = files.filter((f) => (
+    (f.kind === 'document' || f.kind === 'text') && String(f.text || '').trim().length > 200
+  ));
+
+  const theAttachedOne = drafting && !perWriteUp && attachedWriteUps.length === 1
+    ? attachedWriteUps[0]
     : null;
+
+  const justTheOne = theAttachedOne || (!files.length && !perWriteUp && drafting
+    ? (theNamedOne || theOpenOne)
+    : null);
 
   if (justTheOne) {
     const written = await draftPerWriteUp([justTheOne], {

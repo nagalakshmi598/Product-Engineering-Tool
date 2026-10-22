@@ -119,6 +119,32 @@ const aboutTheFeature = (rows) => rows.some((s) => /archived channels|direct mes
         got.length ? `${got.length} from the write-up` : String(out.body.answer).slice(0, 36));
     }
 
+    /* ---- attached, with a sentence that would lead it astray ----
+       "Upload this document in content and write test scenarios" produced
+       scenarios about clicking Upload Document and picking a file off a
+       device — the sentence won over the write-up it introduced. */
+    const attached = await (async () => {
+      const fd = new FormData();
+      fd.append('question', 'upload this document in content and write test scenarios');
+      fd.append('history', '[]');
+      fd.append('currentProduct', 'message');
+      // a name of its own: the same file again updates the one already filed
+      fd.append('files', new Blob([SPEC], { type: 'text/markdown' }), 'Slack Sprawl Scope v2.md');
+      const res = await fetch(`${BASE}/api/assistant`, { method: 'POST', body: fd });
+      return res.json();
+    })();
+
+    const fromFile = (attached.draft && attached.draft.scenarios) || [];
+    record('an attached write-up is what it drafts from',
+      aboutTheFeature(fromFile),
+      fromFile.length ? fromFile[0].scenario.slice(0, 58) : String(attached.answer).slice(0, 48));
+    record('the sentence that carried it does not win',
+      !aboutUploading(fromFile),
+      aboutUploading(fromFile) ? 'wrote about uploading documents' : 'nothing about uploading');
+    record('and it is filed where the sentence said',
+      (attached.documents || [])[0] && attached.documents[0].product === 'content',
+      (attached.documents || [])[0] ? attached.documents[0].product : 'nothing filed');
+
     /* ---- naming it works without anything open ---- */
     const byName = await ask('write test scenarios for Slack Message Sprawl- InScope',
       { currentProduct: 'datasprawl' });
