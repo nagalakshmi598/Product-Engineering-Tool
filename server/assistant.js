@@ -1491,15 +1491,71 @@ function wantsEveryWriteUp(q) {
   return EVERY_WRITE_UP.test(String(q || ''));
 }
 
-/** The write-ups a question is about: a product's, or all of them. */
+/**
+ * Asked for a set each rather than one set between them.
+ *
+ * This is the instruction people actually give — "write them separately",
+ * "keep each one's scenarios on its own" — and it is given about whatever was
+ * just named, which may be four write-ups listed by name and never once
+ * called a document. So it is read on its own, without needing the word.
+ *
+ * Spelt as it is typed, which is not always as it is in a dictionary.
+ */
+const SEPARATELY = new RegExp(
+  '\\b(?:'
+    + 'sep[ae]r[ae]t(?:e|ely|ly|ed)?'            // separate, seperately, separatly
+    + '|individual(?:ly)?'
+    + '|one\\s+by\\s+one'
+    + '|(?:its|their|his|her|each)\\s+own\\s+(?:set|list|enhancement|card)'
+    + '|(?:set|list|enhancement)\\s+(?:each|per\\s+\\w+)'
+  + ')\\b',
+  'i'
+);
+
+function wantsThemApart(q) {
+  return SEPARATELY.test(String(q || ''));
+}
+
+/**
+ * The write-ups a question names, in the order it names them.
+ *
+ * "For Egnyte - Content Sprawl Scope, Google Gmail - Email Sprawl Scope and
+ * Slack Message Sprawl-InScope" names three, and those three are the job —
+ * not every write-up filed under the product they happen to share.
+ */
+function writeUpsNamed(question, documents) {
+  const q = String(question || '').toLowerCase();
+
+  return documents
+    .map((doc) => ({ doc, at: q.indexOf(doc.name.toLowerCase()) }))
+    .filter((hit) => hit.at !== -1)
+    .sort((a, b) => a.at - b.at)
+    .map((hit) => hit.doc);
+}
+
+/**
+ * The write-ups a question is about: the ones it names, a product's, or all.
+ *
+ * Says which of those it was, because naming four write-ups is itself an
+ * instruction — it asks for those four — while falling back to every write-up
+ * on the shelf is a guess, and a guess should not on its own split one answer
+ * into fifteen.
+ */
 async function writeUpsInScope(question, currentProduct) {
   // enough text to specify something; a title page or a screenshot is not
   const all = (await store.allDocuments()).filter((d) => toPlainText(d.html).trim().length > 120);
+
+  /* Named beats scoped. Someone who lists four write-ups has already said
+     which ones they mean, and widening that to the product's other eleven
+     answers a question nobody asked. */
+  const named = writeUpsNamed(question, all);
+  if (named.length) return { list: named, named: true };
+
   const product = findProduct(String(question).toLowerCase(), await store.listProducts());
   const key = product ? product.key : currentProduct;
 
   const scoped = key ? all.filter((d) => d.product === key) : [];
-  return scoped.length ? scoped : all;
+  return { list: scoped.length ? scoped : all, named: false };
 }
 
 /**
@@ -1639,9 +1695,20 @@ async function askAssistant({
   // briefed to draft only when drafting is what was asked for
   const system = drafting ? SYSTEM_DRAFT : SYSTEM;
 
-  /* A question about the whole shelf is answered a shelf at a time. */
-  if (drafting && wantsEveryWriteUp(text)) {
-    const shelf = await writeUpsInScope(text, currentProduct);
+  /* A question about more than one write-up is answered a write-up at a time.
+     Three ways of asking for that, all meaning the same thing: "all the
+     documents", "write them separately", or simply listing them by name. */
+  const scope = drafting
+    ? await writeUpsInScope(text, currentProduct)
+    : { list: [], named: false };
+
+  /* Naming them is asking for them. Saying "separately" is asking for them
+     apart. Either one is enough; falling back to the whole shelf is not. */
+  const perWriteUp = drafting
+    && (wantsEveryWriteUp(text) || wantsThemApart(text) || (scope.named && scope.list.length > 1));
+
+  if (perWriteUp) {
+    const shelf = scope.list;
 
     if (shelf.length > 1) {
       const perDoc = await draftPerWriteUp(shelf, {
@@ -1658,7 +1725,9 @@ async function askAssistant({
 
            Asked for them together — "in one set", "combined" — they are
            combined instead. */
-        if (!wantsThemTogether(text) && !openEnhancement) {
+        /* Asked for them apart, they go apart even with a set open — the
+           instruction is about the write-ups, not about the page. */
+        if (!wantsThemTogether(text) && (wantsThemApart(text) || !openEnhancement)) {
           const lines = [
             `${plural(perDoc.total, 'scenario')} across ${plural(perDoc.sets.length, 'write-up')}, `
               + 'each filed under its own name:',
@@ -1777,7 +1846,13 @@ async function askAssistant({
       provider,
       draft: scenarios.length ? {
         feature: featureOf(text.toLowerCase()),
-        name: openEnhancement ? openEnhancement.name : titleFor(featureOf(text.toLowerCase()), scenarios),
+        /* A write-up named in the question has already named the set:
+           "Egnyte - Content Sprawl Scope" beats anything worked out from the
+           sentence that asked for it, and beats "Unknown" by a mile. */
+        name: openEnhancement
+          ? openEnhancement.name
+          : ((scope.named && scope.list.length === 1 && scope.list[0].name)
+            || titleFor(featureOf(text.toLowerCase()), scenarios)),
         product: openEnhancement ? openEnhancement.product : guessProduct(text, currentProduct),
         enhancementId: openEnhancement ? openEnhancement.id : null,
         scenarios,
@@ -1797,4 +1872,4 @@ async function askAssistant({
   }
 }
 
-module.exports = { askAssistant, buildContext, parseDraft, guessProduct, enhancementName, titleFor };
+module.exports = { askAssistant, wantsThemApart, writeUpsNamed, buildContext, parseDraft, guessProduct, enhancementName, titleFor };
