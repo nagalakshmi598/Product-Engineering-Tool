@@ -14,7 +14,7 @@ const fs = require('fs');
 const path = require('path');
 const mammoth = require('mammoth');
 
-const DOC_DIR = path.join(__dirname, 'uploads', 'docs');
+const { DOC_DIR } = require('./paths');
 
 const KIND_BY_EXT = {
   '.docx': 'docx',

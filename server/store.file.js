@@ -18,7 +18,7 @@ const crypto = require('crypto');
 
 const { defaultStatus } = require('./scenarios');
 
-const DATA_DIR = path.join(__dirname, 'data');
+const { DATA_DIR } = require('./paths');
 const DATA_FILE = path.join(DATA_DIR, 'db.json');
 
 const PRODUCTS = [

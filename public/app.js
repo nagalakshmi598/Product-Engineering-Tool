@@ -2506,6 +2506,23 @@ async function askBot(question) {
 
     botBubble('bot', result.answer);
 
+    /* A guide written from a recording is a document, and the thing to do
+       with it is read it. */
+    if (result.guide && result.document) {
+      const row = document.createElement('div');
+      row.className = 'bot-actions';
+
+      const open = document.createElement('button');
+      open.type = 'button';
+      open.className = 'bot-action';
+      open.textContent = 'Open the guide';
+      open.addEventListener('click', () => openDocuments({ expand: result.document.id }));
+
+      row.appendChild(open);
+      el('botLog').appendChild(row);
+      el('botLog').scrollTop = el('botLog').scrollHeight;
+    }
+
     if (result.command) {
       bot.history.push({ role: 'user', content: text });
       bot.history.push({ role: 'assistant', content: result.answer });

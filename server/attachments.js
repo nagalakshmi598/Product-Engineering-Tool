@@ -15,7 +15,7 @@
 
 const path = require('path');
 const mammoth = require('mammoth');
-const { framesFrom } = require('./video');
+const { framesFrom, MAX_FRAMES } = require('./video');
 const { parseCsv } = require('./parse');
 
 /*
@@ -92,7 +92,7 @@ function fromSheet(buffer, name) {
  * Turn one uploaded file into something the model can use.
  * @returns {Promise<{name, kind, text?, image?, mime?, note?}>}
  */
-async function readAttachment(file) {
+async function readAttachment(file, { videoFrames = MAX_FRAMES } = {}) {
   const name = file.originalname || 'attachment';
   const ext = path.extname(name).toLowerCase();
 
@@ -108,7 +108,7 @@ async function readAttachment(file) {
      screenshot is. Nothing streams a video to a model. */
   if (VIDEO_EXT.has(ext)) {
     try {
-      const { frames, seconds, note } = await framesFrom(file.buffer, name);
+      const { frames, seconds, note } = await framesFrom(file.buffer, name, { max: videoFrames });
       if (!frames.length) return { name, kind: 'skipped', note };
 
       return {
@@ -170,9 +170,14 @@ async function readAttachment(file) {
 }
 
 /** Read everything attached to one message. */
-async function readAll(files) {
+async function readAll(files, options = {}) {
   const list = (files || []).slice(0, MAX_FILES);
-  return Promise.all(list.map((file) => readAttachment(file)));
+  return Promise.all(list.map((file) => readAttachment(file, options)));
+}
+
+/** Whether a recording came with the message, by its name alone. */
+function hasVideo(files) {
+  return (files || []).some((file) => VIDEO_EXT.has(path.extname(file.originalname || '').toLowerCase()));
 }
 
 /** The text ones, as a block to sit alongside the question. */
@@ -187,4 +192,4 @@ function asContext(attachments) {
   ].join('\n');
 }
 
-module.exports = { readAll, asContext, MAX_FILES, MAX_BYTES };
+module.exports = { readAll, asContext, hasVideo, MAX_FILES, MAX_BYTES };

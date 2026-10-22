@@ -22,10 +22,17 @@ const crypto = require('crypto');
 
 const ffmpeg = require('ffmpeg-static');
 
-/* Enough of a walkthrough to follow it, few enough to send. A screen
-   recording of a migration is a dozen distinct screens; this allows for the
-   pauses and retries around them. */
+/* Enough of a walkthrough to follow it, few enough to send alongside a
+   question. A screenshot dropped into the chat is read whole; a recording
+   asked about in passing is read at this depth. */
 const MAX_FRAMES = 24;
+
+/* Writing the recording up as a guide is the other case, and there the
+   screens are the point: a migration from signing in to delta is thirty-odd
+   of them, and one missed is a step missing from the document. They are read
+   a handful at a time rather than all at once, so the number of them is not
+   limited by what fits in a single turn. */
+const MAX_GUIDE_FRAMES = 200;
 
 /* Wide enough to read a button's label, small enough to send two dozen of. */
 const FRAME_WIDTH = 1100;
@@ -66,9 +73,12 @@ async function lengthOf(file) {
  *
  * @param {Buffer} buffer the recording
  * @param {string} name what it was called, for the file extension
+ * @param {object} [options]
+ * @param {number} [options.max] how many screens to keep at most
  * @returns {Promise<{frames: Array<{at: number, image: Buffer}>, seconds: number, note: string}>}
  */
-async function framesFrom(buffer, name) {
+async function framesFrom(buffer, name, { max = MAX_FRAMES } = {}) {
+  const cap = Math.max(1, Math.min(Number(max) || MAX_FRAMES, MAX_GUIDE_FRAMES));
   const ext = path.extname(name || '').toLowerCase() || '.mp4';
   const folder = path.join(os.tmpdir(), `cf-video-${crypto.randomUUID()}`);
   fs.mkdirSync(folder, { recursive: true });
@@ -95,7 +105,7 @@ async function framesFrom(buffer, name) {
       '-i', source,
       '-vf', `select='eq(n\\,0)+gt(scene,${SCENE_CHANGE})',scale=${FRAME_WIDTH}:-2,showinfo`,
       '-vsync', 'vfr',
-      '-frames:v', String(MAX_FRAMES),
+      '-frames:v', String(cap),
       '-q:v', '4',
       path.join(folder, 'scene-%03d.jpg'),
     ]);
@@ -105,7 +115,7 @@ async function framesFrom(buffer, name) {
 
     /* A recording of one long form being filled in may never change enough to
        trip the scene test, so there is always the timer to fall back on. */
-    const every = Math.max(1, seconds / MAX_FRAMES);
+    const every = Math.max(1, seconds / cap);
     let spacedEvenly = false;
 
     if (scenes.length < 3) {
@@ -115,7 +125,7 @@ async function framesFrom(buffer, name) {
         '-hide_banner', '-loglevel', 'error',
         '-i', source,
         '-vf', `fps=1/${every.toFixed(3)},scale=${FRAME_WIDTH}:-2`,
-        '-frames:v', String(MAX_FRAMES),
+        '-frames:v', String(cap),
         '-q:v', '4',
         path.join(folder, 'frame-%03d.jpg'),
       ]);
@@ -151,4 +161,4 @@ async function framesFrom(buffer, name) {
   }
 }
 
-module.exports = { framesFrom, lengthOf, MAX_FRAMES };
+module.exports = { framesFrom, lengthOf, MAX_FRAMES, MAX_GUIDE_FRAMES };

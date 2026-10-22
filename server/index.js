@@ -18,6 +18,8 @@ const { extractScenarios } = require('./parse');
 const LABELLED_SHEETS = new Set(['diy']);
 const { askAssistant, guessProduct } = require('./assistant');
 const attachments = require('./attachments');
+const { writeWalkthrough, wantsAGuide } = require('./walkthrough');
+const { MAX_GUIDE_FRAMES } = require('./video');
 const { parseCommand, describeCommand } = require('./commands');
 const { tidyName } = require('./names');
 const { generateTestCases, hasApiKey, activeProvider, keyProblem } = require('./testcases');
@@ -31,7 +33,7 @@ const {
 } = require('./documents');
 
 const PORT = process.env.PORT || 4310;
-const UPLOAD_DIR = path.join(__dirname, 'uploads');
+const { UPLOAD_DIR } = require('./paths');
 const SCENARIO_EXT = new Set(['.csv', '.txt', '.xlsx', '.xls', '.xlsm']);
 const DOCUMENT_EXT = new Set(DOC_EXT);
 
@@ -1047,7 +1049,39 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
     product: guessProduct(String(question || ''), (open && open.product) || currentProduct),
   });
 
-  const read = await attachments.readAll(req.files);
+  /* A recording of someone working through the product, together with a
+     request to write it up, is a different job from a question about it:
+     every screen is wanted rather than a sample of them, and what comes back
+     is a document rather than an answer. The guide is read at full depth;
+     everything else is read as it always was. */
+  const guideWanted = attachments.hasVideo(req.files) && wantsAGuide(question);
+
+  const read = await attachments.readAll(req.files, guideWanted ? { videoFrames: MAX_GUIDE_FRAMES } : {});
+
+  const clips = guideWanted ? read.filter((f) => f.kind === 'video' && (f.frames || []).length) : [];
+  if (clips.length) {
+    const written = await writeWalkthrough({
+      clips,
+      question,
+      product: guessProduct(String(question || ''), (open && open.product) || currentProduct),
+    });
+
+    const answer = `I watched ${plural(clips.length, 'recording')} and wrote it up as `
+      + `"${written.document.name}" — ${plural(written.steps, 'step')} with `
+      + `${plural(written.used, 'screenshot')}, read from ${plural(written.screens, 'screen')}. `
+      + 'It is on the Documents page. Tell me what to change and I will change it.';
+
+    return res.json({
+      answer,
+      document: store.documentSummary(written.document),
+      guide: { steps: written.steps, screenshots: written.used, screens: written.screens },
+      attachments: read.map(({ name, kind, note }) => ({ name, kind, note })),
+      documents: filed,
+      model: 'built-in',
+      provider: 'local',
+    });
+  }
+
   const result = await askAssistant({
     question,
     history,
