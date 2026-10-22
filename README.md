@@ -152,6 +152,14 @@ See [samples/sample-test-scenarios.csv](samples/sample-test-scenarios.csv) for t
 | `server/parse.js` | CSV (RFC 4180) + XLSX reader, scenario normalisation |
 | `server/documents.js` | Document intake: .docx to HTML + screenshot extraction, PDF/image/text |
 | `server/testcases.js` | OpenAI / Claude call that turns a scenario into detailed test cases |
+| `server/assistant.js` | The chat assistant: answering, drafting, reading write-ups |
+| `server/commands.js` | Reading an instruction — delete, rename, mark, generate |
+| `server/words.js` | Correcting the words an instruction is made of |
+| `server/walkthrough.js` | Turning a screen recording into a step-by-step guide |
+| `server/guides.js` | Writing a guide into the tool as a write-up |
+| `server/video.js` | Pulling the screens out of a recording |
+| `server/pointing.js` | Reading a screenshot to find which thing was meant |
+| `server/paths.js` | Where data and uploads live (CF_DATA_DIR, CF_UPLOAD_DIR) |
 | `server/store.js` | MongoDB data access, product definitions |
 | `server/db.js` | MongoDB connection and indexes |
 | `server/migrate.js` | One-off import of the old `db.json` into MongoDB |
@@ -189,3 +197,36 @@ See [samples/sample-test-scenarios.csv](samples/sample-test-scenarios.csv) for t
   straight to the database rather than through an in-process copy, so two servers pointed at
   the same database will not overwrite each other.
 - There is no authentication; run it on your machine or behind an internal network.
+
+## Tests
+
+```bash
+npm test                 # everything, about half a minute
+npm test commands        # one suite, by name
+npm test typos documents # several
+```
+
+Each suite starts the tool on a port of its own against an empty data folder in
+the system temp directory, so none of it touches the enhancements, scenarios or
+write-ups on this machine. Where the assistant needs a model, a stub in
+`tests/stubs/` stands in — the stubs answer from whichever part of the turn a
+model would answer from, so a change that sends the wrong thing shows up as the
+wrong answer rather than passing quietly. No API key is used and nothing is
+spent.
+
+| Suite | What it holds to |
+| --- | --- |
+| `commandtest.js` | An instruction means the same thing every time it is given |
+| `typotest.js` | Typed in a hurry, still understood — and never silently turned into something else |
+| `deltest.js` | Say document and a document goes; say scenarios and scenarios go |
+| `pointtest.js` | "This one", said while pointing at a screenshot |
+| `sourcetest.js` | The write-up you attached is the one it drafts from |
+| `insidetest.js` | Scenarios come from what the write-up says, not from what the tool does with it |
+| `persetest.js` | A set each, when a set each is asked for |
+| `agenttest.js` | Everything the tool does can be asked for in the chat |
+| `guidetest.js` | A recording, written up as a guide with its screenshots |
+| `toolstest.js` | Copy and edit under a message (drives a real Chrome; skipped if none) |
+
+Every line in these was got wrong once. Run `npm test` before committing: a
+change that breaks one of them is a regression, and the point is to find that
+out here rather than in the chat panel a day later.

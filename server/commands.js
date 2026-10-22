@@ -58,9 +58,16 @@ function tidyName(text) {
     .trim();
 }
 
-/** A name, or null when the words point at whatever is open. */
-function namedOrOpen(text) {
-  const name = tidyName(text);
+/**
+ * A name, or null when the words point at whatever is open.
+ *
+ * "Delete the Private Channels scenarios" names a set and calls it scenarios,
+ * so the word comes off the end. "Delete the DIY Tool Test Scenarios
+ * document" has already had its noun taken by the pattern — what is left is
+ * the whole name, and taking a word off it leaves a name nothing is called.
+ */
+function namedOrOpen(text, { whole = false } = {}) {
+  const name = whole ? tidyLabel(text) : tidyName(text);
   return THE_OPEN_ONE.test(name) ? null : name;
 }
 
@@ -111,7 +118,7 @@ const PATTERNS = [
         + `|${NAMED}\\s+${A_DOCUMENT})\\s*$`,
       'i'
     ),
-    read: (m) => ({ name: namedOrOpen(m[1] || m[2]), object: 'document' }),
+    read: (m) => ({ name: namedOrOpen(m[1] || m[2], { whole: true }), object: 'document' }),
   },
 
   /* delete this document — no name on it, so which one has to be asked, and
@@ -136,7 +143,7 @@ const PATTERNS = [
         + `\\s+(?:to|as)\\s+${NAMED}\\s*$`,
       'i'
     ),
-    read: (m) => ({ name: namedOrOpen(m[1] || m[2]), to: tidyLabel(m[3]), object: 'document' }),
+    read: (m) => ({ name: namedOrOpen(m[1] || m[2], { whole: true }), to: tidyLabel(m[3]), object: 'document' }),
   },
 
   /* move the Gmail Sprawl document to Email */
@@ -149,7 +156,7 @@ const PATTERNS = [
         + `\\s+(?:to|under|into)\\s+${NAMED}\\s*$`,
       'i'
     ),
-    read: (m) => ({ name: namedOrOpen(m[1] || m[2]), to: tidyLabel(m[3]), object: 'document' }),
+    read: (m) => ({ name: namedOrOpen(m[1] || m[2], { whole: true }), to: tidyLabel(m[3]), object: 'document' }),
   },
 
   /* generate test cases for the Private Channels set */
@@ -173,7 +180,7 @@ const PATTERNS = [
         + `(?:the\\s+)?${NAMED}\\s+${A_DOCUMENT}\\s*[:\\-—]\\s*([\\s\\S]+)`,
       'i'
     ),
-    read: (m) => ({ name: namedOrOpen(m[1]), text: String(m[2]).trim(), object: 'document' }),
+    read: (m) => ({ name: namedOrOpen(m[1], { whole: true }), text: String(m[2]).trim(), object: 'document' }),
   },
 
   /* in the Egnyte write-up change "180 days" to "90 days" */
@@ -185,7 +192,7 @@ const PATTERNS = [
       'i'
     ),
     read: (m) => ({
-      name: namedOrOpen(m[1]), from: m[2], to: m[3], object: 'document',
+      name: namedOrOpen(m[1], { whole: true }), from: m[2], to: m[3], object: 'document',
     }),
   },
 
