@@ -153,10 +153,42 @@ async function api(url, options) {
     throw new Error(offline);
   }
 
+  noteTheBuild(res.headers.get('X-Tool-Build'));
+
   if (res.status === 204) return null;
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
   return data;
+}
+
+/**
+ * Notice when the server has moved on from the page.
+ *
+ * This page is opened once and then talked to for hours, so a fix can be
+ * running on the server while the browser is still executing the script it
+ * loaded this morning — and the symptom is a reply the old page cannot read.
+ * Rather than leave that looking like a bug in the fix, say what it is.
+ */
+let loadedBuild = null;
+let saidSo = false;
+
+function noteTheBuild(build) {
+  if (!build) return;
+  if (!loadedBuild) { loadedBuild = build; return; }
+  if (build === loadedBuild || saidSo) return;
+
+  saidSo = true;
+  const bar = document.createElement('div');
+  bar.className = 'build-bar';
+  bar.innerHTML = '<span>The tool has been updated since this page was opened.</span>';
+
+  const now = document.createElement('button');
+  now.type = 'button';
+  now.textContent = 'Reload';
+  now.addEventListener('click', () => location.reload());
+
+  bar.appendChild(now);
+  document.body.appendChild(bar);
 }
 
 let toastTimer;
@@ -2583,7 +2615,15 @@ async function askBot(question) {
     const form = new FormData();
     form.append('question', text);
     form.append('history', JSON.stringify(bot.history));
-    if (state.product) form.append('currentProduct', state.product);
+    /* Which product is being looked at. On the Documents page that is the
+       tab, not state.product — which is cleared there, so without this the
+       assistant answers about the whole tool while the page shows one
+       product's nine write-ups. */
+    const looking = state.product
+      || (state.view === 'documents' && state.docTab !== 'all' && state.docTab !== 'unassigned'
+        ? state.docTab
+        : '');
+    if (looking) form.append('currentProduct', looking);
 
     // reading a set of scenarios means the next ones belong on the end of it
     if (state.view === 'scenarios' && state.enhancement) {

@@ -19,6 +19,7 @@ const LABELLED_SHEETS = new Set(['diy']);
 const { askAssistant, guessProduct } = require('./assistant');
 const attachments = require('./attachments');
 const { writeWalkthrough, wantsAGuide } = require('./walkthrough');
+const { whichOneIsShown, picturesIn } = require('./pointing');
 const { MAX_GUIDE_FRAMES } = require('./video');
 const { parseCommand, describeCommand } = require('./commands');
 const { tidyName } = require('./names');
@@ -89,6 +90,29 @@ const enhancementUpload = multer({
 
 const app = express();
 app.use(express.json());
+
+/* What build of the page this server is serving.
+ *
+ * The tool is left open for hours and talked to rather than reloaded, so a
+ * fix can be deployed, running and answering while the browser is still
+ * executing the script it loaded this morning — the server's new wording
+ * arriving in the old page's handling of it. Every API reply carries this,
+ * and the page says so when it stops matching what the page loaded with. */
+const BUILD = (() => {
+  const sum = crypto.createHash('sha1');
+  const root = path.join(__dirname, '..', 'public');
+
+  ['app.js', 'styles.css', 'index.html'].forEach((file) => {
+    try { sum.update(fs.readFileSync(path.join(root, file))); } catch (err) { sum.update(file); }
+  });
+
+  return sum.digest('hex').slice(0, 12);
+})();
+
+app.use('/api', (req, res, next) => {
+  res.setHeader('X-Tool-Build', BUILD);
+  next();
+});
 // no-cache so a UI change shows up on a plain refresh, without a hard reload
 app.use(express.static(path.join(__dirname, '..', 'public'), {
   etag: true,
@@ -768,15 +792,24 @@ async function nearbySets(command, product) {
   const all = aboutDocument ? await store.allDocuments() : await store.allEnhancements();
   const wanted = command.name ? scenarioKey(command.name) : '';
 
-  const scored = all.map((row) => ({
+  /* Looking at one product's write-ups, "this one" is one of those. Offering
+     the other products' as well is offering things that are not on screen. */
+  const inView = product ? all.filter((row) => row.product === product) : [];
+  const pool = inView.length ? inView : all;
+
+  const scored = pool.map((row) => ({
     row,
-    score: (product && row.product === product ? 1 : 0)
-      + (wanted ? alike(wanted, scenarioKey(row.name)) : 0),
+    score: wanted ? alike(wanted, scenarioKey(row.name)) : 0,
   }));
+
+  /* Six when there is a name to rank by — past that the ranking is doing the
+     work. Nothing to rank by and the order is arbitrary, so cutting it short
+     just hides the one that was meant. */
+  const room = wanted ? 6 : 12;
 
   return scored
     .sort((a, b) => b.score - a.score)
-    .slice(0, 6)
+    .slice(0, room)
     .map(({ row }) => (aboutDocument ? store.documentSummary(row) : store.summary(row)));
 }
 
@@ -1020,7 +1053,34 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
      model: it has to mean the same thing every time it is given. */
   const command = parseCommand(question);
   if (command) {
-    const target = await targetOf(command, open ? open.id : null, currentDocument);
+    let target = await targetOf(command, open ? open.id : null, currentDocument);
+    let becauseOfThePicture = '';
+
+    /* Nothing was named and nothing is open — but a screenshot came with the
+       message, and marking the thing on screen is how anyone says "this one".
+       The picture is read against what it could be. It may come back with
+       nothing, which is the same as before: it asks. */
+    if (!target && (req.files || []).length) {
+      const near = await nearbySets(command, currentProduct);
+      const pictures = picturesIn(await attachments.readAll(req.files));
+      const shown = await whichOneIsShown({
+        pictures,
+        candidates: near,
+        question,
+        noun: command.object === 'document' ? 'write-up' : 'set',
+      });
+
+      if (shown) {
+        target = command.object === 'document'
+          ? await store.getDocument(shown.id)
+          : await store.getEnhancement(shown.id);
+        if (target) {
+          becauseOfThePicture = shown.why
+            ? `From the screenshot — ${shown.why}.\n\n`
+            : 'From the screenshot.\n\n';
+        }
+      }
+    }
 
     if (!target) {
       const near = await nearbySets(command, currentProduct);
@@ -1051,7 +1111,8 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
     }
 
     return res.json({
-      answer: describeCommand(command, { enhancementName: target.name, documentName: target.name }),
+      answer: becauseOfThePicture
+        + describeCommand(command, { enhancementName: target.name, documentName: target.name }),
       command,
       target: { id: target.id, name: target.name, product: target.product },
       model: 'built-in',
