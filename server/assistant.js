@@ -1748,7 +1748,8 @@ async function askAssistant({
   /* Naming them is asking for them. Saying "separately" is asking for them
      apart. Either one is enough; falling back to the whole shelf is not. */
   const perWriteUp = drafting
-    && (wantsEveryWriteUp(text) || wantsThemApart(text) || (scope.named && scope.list.length > 1));
+    && (wantsEveryWriteUp(text) || wantsThemApart(text)
+      || (!files.length && scope.named && scope.list.length > 1));
 
   /* One write-up, pointed at rather than described.
    *
@@ -1757,12 +1758,21 @@ async function askAssistant({
    * What it asks for is the feature the write-up specifies — so the write-up
    * is found, its words are what the scenarios are drafted from, and the set
    * takes its name. */
-  const theOpenOne = drafting && openDocument && POINTS_AT_A_WRITE_UP.test(text)
-    ? openDocument
-    : null;
+  const theOpenOne = openDocument && POINTS_AT_A_WRITE_UP.test(text) ? openDocument : null;
+  const theNamedOne = scope.named && scope.list.length === 1 ? scope.list[0] : null;
 
-  const justTheOne = !perWriteUp && drafting
-    ? (theOpenOne || (scope.named && scope.list.length === 1 ? scope.list[0] : null))
+  /* A write-up that came with the message is the one being asked about.
+   *
+   * It is already filed by the time this runs, so it is also on the shelf —
+   * and picking it off the shelf by name, or taking whichever write-up
+   * happens to be open behind the chat, drafts from something that is not
+   * what was just attached. Attaching it says which one plainly enough, and
+   * its text is already in the context below.
+   *
+   * Naming one beats having one open, for the same reason: it is said rather
+   * than inferred. */
+  const justTheOne = !files.length && !perWriteUp && drafting
+    ? (theNamedOne || theOpenOne)
     : null;
 
   if (justTheOne) {
