@@ -1921,6 +1921,69 @@ const BOT_SUGGESTIONS = [
   'Which enhancements have no test cases yet?',
 ];
 
+/* Drawn rather than written: a row of words under every message reads as
+   part of the conversation, and these are not. */
+const TOOL_ICONS = {
+  copy: '<svg viewBox="0 0 20 20" aria-hidden="true">'
+    + '<rect x="7" y="7" width="9" height="11" rx="2"/>'
+    + '<path d="M13 5.5v-.5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h.5"/></svg>',
+  edit: '<svg viewBox="0 0 20 20" aria-hidden="true">'
+    + '<path d="M13.6 3.9a1.8 1.8 0 0 1 2.5 2.5L8 14.6l-3.3.8.8-3.3z"/>'
+    + '<path d="M12.2 5.3l2.5 2.5"/></svg>',
+};
+
+function toolButton(icon, label, onClick) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'bot-tool';
+  button.title = label;
+  button.setAttribute('aria-label', label);
+  button.innerHTML = TOOL_ICONS[icon];        // a constant, never anything typed
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+/**
+ * Put text on the clipboard.
+ *
+ * The clipboard API is only given to pages served over https or from
+ * localhost, and this tool is meant to end up on a server at a plain address,
+ * where it is not. The old way still works there.
+ */
+async function copyText(text) {
+  if (await throughTheClipboardApi(text) || throughAHiddenBox(text)) return toast('Copied.');
+  toast('This browser would not let the tool copy that.', true);
+}
+
+async function throughTheClipboardApi(text) {
+  if (!navigator.clipboard || !window.isSecureContext) return false;
+
+  /* It can refuse even where it exists — permission withheld, or the click
+     not counted as one. Refusing is not the end of it; there is another way. */
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+function throughAHiddenBox(text) {
+  try {
+    const hidden = document.createElement('textarea');
+    hidden.value = text;
+    hidden.setAttribute('readonly', '');
+    hidden.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+    document.body.appendChild(hidden);
+    hidden.select();
+    const done = document.execCommand('copy');
+    hidden.remove();
+    return done;
+  } catch (err) {
+    return false;
+  }
+}
+
 function botBubble(role, text, extraClass = '') {
   const row = document.createElement('div');
   row.className = `bot-msg is-${role} ${extraClass}`.trim();
@@ -1928,6 +1991,15 @@ function botBubble(role, text, extraClass = '') {
   bubble.className = 'bot-bubble';
   bubble.textContent = text;
   row.appendChild(bubble);
+
+  /* "Thinking…" is not a message and there is nothing to take from it. */
+  if (!row.classList.contains('is-thinking')) {
+    const tools = document.createElement('div');
+    tools.className = 'bot-tools';
+    tools.appendChild(toolButton('copy', 'Copy this message', () => copyText(text)));
+    row.appendChild(tools);
+  }
+
   el('botLog').appendChild(row);
   el('botLog').scrollTop = el('botLog').scrollHeight;
   return row;
@@ -1942,15 +2014,17 @@ function botBubble(role, text, extraClass = '') {
  * goes with it. The files that rode along are kept and sent again.
  */
 
-/** Put an Edit control under a message that has been sent. */
+/** Put an edit control beside the copy one, under a message already sent. */
 function allowEditing(row, turn) {
-  const edit = document.createElement('button');
-  edit.type = 'button';
-  edit.className = 'bot-edit';
-  edit.textContent = 'Edit';
-  edit.title = 'Change this message and ask again from here';
-  edit.addEventListener('click', () => reopenMessage(row, turn));
-  row.appendChild(edit);
+  const tools = row.querySelector('.bot-tools');
+  if (!tools) return row;
+
+  tools.appendChild(toolButton(
+    'edit',
+    'Change this message and ask again from here',
+    () => reopenMessage(row, turn)
+  ));
+
   return row;
 }
 
@@ -1959,12 +2033,12 @@ function reopenMessage(row, turn) {
   if (bot.busy || row.classList.contains('is-editing')) return;
 
   const bubble = row.querySelector('.bot-bubble');
-  const edit = row.querySelector('.bot-edit');
+  const tools = row.querySelector('.bot-tools');
   const shown = bubble.textContent;
 
   row.classList.add('is-editing');
   bubble.textContent = '';
-  if (edit) edit.hidden = true;
+  if (tools) tools.hidden = true;
 
   const box = document.createElement('textarea');
   box.className = 'bot-edit-box';
@@ -1987,7 +2061,7 @@ function reopenMessage(row, turn) {
   const close = () => {
     row.classList.remove('is-editing');
     bubble.textContent = shown;
-    if (edit) edit.hidden = false;
+    if (tools) tools.hidden = false;
   };
 
   cancel.addEventListener('click', close);
