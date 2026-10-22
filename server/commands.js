@@ -106,6 +106,13 @@ const STARTS_AS_SCENARIOS = /^(?:the\s+|all\s+|these\s+|those\s+)*(?:scenarios?|
    never a set of scenarios, so "remove that section" empties a column — it
    does not delete eighty-six rows. */
 const A_COLUMN = 'section|type|status|s\\.?\\s*no|serial|source';
+
+/* Giving something a different name. "Rename" is the word for it, and almost
+   nobody uses it: "edit that name as …", "change the name to …", "call it …"
+   are what gets typed. Reaching the model with any of those got back a
+   refusal to help with renaming files, which is not a thing this tool was
+   being asked to do. */
+const A_RENAME = '(?:rename|re-?name|edit|change|update|correct|fix|set|call)';
 const NAMED = '["\'“]?(.+?)["\'”]?';
 
 const PATTERNS = [
@@ -137,13 +144,36 @@ const PATTERNS = [
   {
     kind: 'rename-document',
     re: new RegExp(
-      '\\brename\\s+(?:the\\s+)?'
+      `\\b${A_RENAME}\\s+(?:the\\s+)?`
         + `(?:${A_DOCUMENT}\\s+(?:called\\s+|named\\s+)?${NAMED}`
         + `|${NAMED}\\s+${A_DOCUMENT})`
         + `\\s+(?:to|as)\\s+${NAMED}\\s*$`,
       'i'
     ),
     read: (m) => ({ name: namedOrOpen(m[1] || m[2], { whole: true }), to: tidyLabel(m[3]), object: 'document' }),
+  },
+
+  /* edit that name as Confluence-to-SharePoint-Migration-Walkthrough —
+     nothing names which write-up, so it is the one open or the one in the
+     screenshot, and failing both it asks which */
+  {
+    kind: 'rename-document',
+    re: new RegExp(
+      `\\b${A_RENAME}\\s+(?:the\\s+|that\\s+|this\\s+|its\\s+)?`
+        + `(?:${A_DOCUMENT}\\s+)?(?:name|title)\\s+(?:to|as|into)\\s+${NAMED}\\s*$`,
+      'i'
+    ),
+    read: (m) => ({ name: null, to: tidyLabel(m[1]), object: 'document' }),
+  },
+
+  /* rename this document to Egnyte sprawl */
+  {
+    kind: 'rename-document',
+    re: new RegExp(
+      `\\b${A_RENAME}\\s+(?:this|that|the)\\s+${A_DOCUMENT}\\s+(?:to|as|into)\\s+${NAMED}\\s*$`,
+      'i'
+    ),
+    read: (m) => ({ name: null, to: tidyLabel(m[1]), object: 'document' }),
   },
 
   /* move the Gmail Sprawl document to Email */
@@ -332,12 +362,26 @@ function parseCommand(question) {
        open one" on a page that lists fifteen of them. Deleting one may go
        unnamed — it is put to the person before it happens anyway, and that
        is the moment to ask which. */
-    if (read.object === 'document' && pattern.kind !== 'delete-document'
+    /* Deleting and renaming may go unnamed — both are put to the person
+       before they happen, and that is the moment to ask which. Moving and
+       editing the words inside one still have to say which. */
+    const mayGoUnnamed = pattern.kind === 'delete-document' || pattern.kind === 'rename-document';
+
+    if (read.object === 'document' && !mayGoUnnamed
       && (!read.name || read.name.length < 3)) continue;
 
     /* What was captured as a write-up's name is the word for scenarios, so
        scenarios are what was asked about. */
     if (read.object === 'document' && read.name && STARTS_AS_SCENARIOS.test(read.name)) continue;
+
+    /* "Edit the document name to X" has no name in it — "name" is the word
+       for the thing being changed, not what the write-up is called. In
+       "change the title of the Egnyte document" it is both: the word, then
+       the name after it. */
+    if (read.object === 'document' && read.name) {
+      read.name = read.name.replace(/^(?:the\s+)?(?:name|title)\s+of\s+(?:the\s+)?/i, '').trim();
+      if (/^(?:name|title)$/i.test(read.name)) read.name = null;
+    }
 
     /* The word decides. An instruction that says "document" is never read as
        the name of a set, even when no write-up matches what was typed. */
@@ -377,7 +421,9 @@ function describeCommand(command, context = {}) {
         ? `Delete the write-up "${command.name || context.documentName}". This cannot be undone.`
         : 'Delete that write-up. This cannot be undone.';
     case 'rename-document':
-      return `Rename the write-up "${command.name}" to "${command.to}".`;
+      return command.name || context.documentName
+        ? `Rename the write-up "${command.name || context.documentName}" to "${command.to}".`
+        : `Rename that write-up to "${command.to}".`;
     case 'move-document':
       return `File the write-up "${command.name}" under ${command.to}.`;
     case 'make-test-cases':

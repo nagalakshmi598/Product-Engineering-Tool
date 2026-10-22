@@ -129,6 +129,26 @@ const sets = async () => (await (await fetch(`${BASE}/api/products/datasprawl/en
       (blind.body.choices || []).length > 0 && blind.body.choices.every((c) => c.kind === 'document'),
       (blind.body.choices || []).map((c) => c.name).join(', ') || 'nothing offered');
 
+    /* ---- renaming, said the way people say it ----
+       "Edit that name as X" reached the model, which answered that it could
+       not help with renaming files. Nobody had asked it to. */
+    const renamed = await ask('edit that name as Dropbox sprawl scope',
+      { documentId: (await docs())[0].id });
+
+    record('"edit that name as X" is an instruction',
+      renamed.body.command && renamed.body.command.kind === 'rename-document',
+      renamed.body.command ? renamed.body.command.kind : String(renamed.body.answer).slice(0, 56));
+    record('it finds the write-up being read',
+      Boolean(renamed.body.target), renamed.body.target ? renamed.body.target.name : 'nothing found');
+    record('and says what it will be called',
+      /to "Dropbox sprawl scope"/.test(String(renamed.body.answer)),
+      String(renamed.body.answer).slice(0, 62));
+
+    const didRename = await run(renamed.body.command, renamed.body.target);
+    record('the write-up is renamed',
+      (await docs()).some((d) => d.name === 'Dropbox sprawl scope'),
+      didRename.body.done || didRename.body.error);
+
     /* ---- saying scenarios still means scenarios ---- */
     const other = await ask('delete the Egnyte - Content Sprawl Scope set', { enhancementId: set.enhancement.id });
     record('naming a set still deletes the set',
