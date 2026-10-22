@@ -1545,6 +1545,17 @@ function wantsThemApart(q) {
   return SEPARATELY.test(String(q || ''));
 }
 
+/* Pointing at a write-up rather than naming it. On the Documents page, with
+   one open, "this document" is not a feature called "this document" — it is
+   the one on the screen, and what is wanted is scenarios for what it says. */
+const POINTS_AT_A_WRITE_UP = new RegExp(
+  '\\b(?:this|that|the\\s+(?:open|current|attached|above|uploaded|given))\\s+'
+    + '(?:documents?|docs?|write-?ups?|files?|specs?|specifications?|one)\\b'
+    + '|\\b(?:inside|within|from|in)\\s+(?:this|that|the)\\s+'
+      + '(?:documents?|docs?|write-?ups?|files?)\\b',
+  'i'
+);
+
 /**
  * The write-ups a question names, in the order it names them.
  *
@@ -1593,7 +1604,7 @@ async function writeUpsInScope(question, currentProduct) {
  * One failed write-up does not sink the rest: whatever came back is kept and
  * the one that failed is named, so it can be asked for again on its own.
  */
-async function draftPerWriteUp(documents, { provider, model, history, system, question }) {
+async function draftPerWriteUp(documents, { provider, model, history, system, question, prefixSections = true }) {
   const sets = [];
   const refused = [];
   let total = 0;
@@ -1607,8 +1618,10 @@ async function draftPerWriteUp(documents, { provider, model, history, system, qu
       text.slice(0, DOC_EXCERPT),
       '',
       'Draft from what it states — its field names, its limits, its messages.',
-      `Begin each section name with "${doc.name} — ".`,
-    ].join('\n');
+      'Write about the feature it specifies, never about the write-up itself:',
+      'not uploading it, not opening it, not what the Documents page does with it.',
+      prefixSections ? `Begin each section name with "${doc.name} — ".` : '',
+    ].filter(Boolean).join('\n');
 
     try {
       const answer = provider === 'openai'
@@ -1648,6 +1661,7 @@ async function askAssistant({
   currentProduct,
   attachments = [],
   openEnhancement = null,
+  openDocument = null,
 } = {}) {
   const text = String(question || '').trim();
   if (!text) {
@@ -1735,6 +1749,54 @@ async function askAssistant({
      apart. Either one is enough; falling back to the whole shelf is not. */
   const perWriteUp = drafting
     && (wantsEveryWriteUp(text) || wantsThemApart(text) || (scope.named && scope.list.length > 1));
+
+  /* One write-up, pointed at rather than described.
+   *
+   * "Write test scenarios for this document" was read as a feature called
+   * "this document", and came back as scenarios about uploading documents.
+   * What it asks for is the feature the write-up specifies — so the write-up
+   * is found, its words are what the scenarios are drafted from, and the set
+   * takes its name. */
+  const theOpenOne = drafting && openDocument && POINTS_AT_A_WRITE_UP.test(text)
+    ? openDocument
+    : null;
+
+  const justTheOne = !perWriteUp && drafting
+    ? (theOpenOne || (scope.named && scope.list.length === 1 ? scope.list[0] : null))
+    : null;
+
+  if (justTheOne) {
+    const written = await draftPerWriteUp([justTheOne], {
+      provider, model, history: trimmed, system: SYSTEM_DRAFT, question: text, prefixSections: false,
+    });
+
+    const set = written.sets[0];
+    if (set && set.scenarios.length) {
+      const lines = [
+        `${plural(set.scenarios.length, 'scenario')} from what "${justTheOne.name}" specifies:`,
+        '',
+        ...set.scenarios.map((s, i) => `${i + 1}. [${s.type}] ${s.scenario}`),
+      ];
+
+      return {
+        answer: lines.join('\n'),
+        model,
+        provider,
+        draft: {
+          feature: justTheOne.name,
+          name: openEnhancement ? openEnhancement.name : justTheOne.name,
+          product: openEnhancement
+            ? openEnhancement.product
+            : (justTheOne.product || guessProduct(text, currentProduct)),
+          enhancementId: openEnhancement ? openEnhancement.id : null,
+          scenarios: set.scenarios,
+          save: wantsSaved(text),
+        },
+      };
+    }
+    /* Nothing came back from it — fall through and answer the ordinary way
+       rather than saying no. */
+  }
 
   if (perWriteUp) {
     const shelf = scope.list;

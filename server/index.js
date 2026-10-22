@@ -1270,6 +1270,9 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
     currentProduct,
     attachments: read,
     openEnhancement: open ? { id: open.id, name: open.name, product: open.product } : null,
+    /* The write-up being read, so that "write scenarios for this document"
+       means the one on the screen rather than a feature of that name. */
+    openDocument: currentDocument ? await store.getDocument(currentDocument) : null,
   });
 
   /* A write-up that arrived with the message already has a name, and it is
