@@ -146,6 +146,14 @@ async function api(url, options) {
   try {
     res = await fetch(url, options);
   } catch (err) {
+    /* Called off on purpose — the question it was answering has been
+       rewritten. Not a failure, and nothing to report. */
+    if (err && err.name === 'AbortError') {
+      const dropped = new Error('abandoned');
+      dropped.abandoned = true;
+      throw dropped;
+    }
+
     /* fetch only rejects when the request never arrived: the server is down,
        or the machine is off the network. The browser's own wording for that
        is "Failed to fetch", which says nothing about what to do. */
@@ -1912,6 +1920,7 @@ const bot = {
   history: [],          // {role, content} pairs sent back for follow-up questions
   position: null,       // where the user dragged the panel to
   files: [],            // attachments waiting to go with the next message
+  inflight: null,       // the question being answered, so an edit can call it off
   greeted: false,
 };
 
@@ -2030,7 +2039,11 @@ function allowEditing(row, turn) {
 
 /** Turn a sent message back into something typeable. */
 function reopenMessage(row, turn) {
-  if (bot.busy || row.classList.contains('is-editing')) return;
+  /* Editing while an answer is still coming back is the commonest moment to
+     want it — the wording is wrong and you can see it is wrong. So it opens
+     either way, and sending abandons the answer in flight, which was an
+     answer to the old wording. */
+  if (row.classList.contains('is-editing')) return;
 
   const bubble = row.querySelector('.bot-bubble');
   const tools = row.querySelector('.bot-tools');
@@ -2070,6 +2083,11 @@ function reopenMessage(row, turn) {
     const changed = box.value.trim();
     if (!changed) return;
     if (changed === turn.text) return close();
+
+    /* An answer still on its way is an answer to the old wording. */
+    if (bot.inflight) bot.inflight.abort();
+    bot.busy = false;
+    el('botSend').disabled = false;
 
     /* What came after was an answer to the old wording. It goes with it,
        including the turns the model was told about. */
@@ -2690,6 +2708,7 @@ async function askBot(question) {
   if (!text || bot.busy) return;
 
   bot.busy = true;
+  bot.inflight = new AbortController();     // so an edit can call this one off
   el('botSend').disabled = true;
   el('botInput').value = '';
 
@@ -2735,7 +2754,7 @@ async function askBot(question) {
     sent.forEach((file) => form.append('files', file, file.name));
 
     // no Content-Type header: the browser sets the multipart boundary
-    const result = await api('/api/assistant', { method: 'POST', body: form });
+    const result = await api('/api/assistant', { method: 'POST', body: form, signal: bot.inflight.signal });
 
     thinking.remove();
 
@@ -2801,6 +2820,11 @@ async function askBot(question) {
     bot.history = bot.history.slice(-8);
   } catch (err) {
     thinking.remove();
+
+    /* Called off because the question was rewritten. The rewritten one is
+       already on its way; saying anything about this one would be noise. */
+    if (err.abandoned) return;
+
     botBubble('bot', err.message, 'is-error');
 
     /* Nothing reached the tool, so nothing is lost: the question goes back in

@@ -207,6 +207,40 @@ function talk(url) {
 
     record('cancel puts it back untouched',
       cancelled.text === 'what is email attribute' && cancelled.tools === false, cancelled.text);
+
+    /* ---- the pencil while an answer is still coming back ----
+       This is the moment people reach for it: the wording is wrong and you
+       can see it is wrong. It used to do nothing at all. */
+    const midAnswer = await run(`(() => {
+      bot.busy = true;                       // as it is while the tool is thinking
+      bot.inflight = new AbortController();
+      document.querySelector('#botLog .bot-msg.is-user .bot-tool[aria-label^="Change"]').click();
+      const row = document.querySelector('#botLog .bot-msg.is-user');
+      return { opened: Boolean(row.querySelector('.bot-edit-box')) };
+    })()`);
+
+    record('the pencil works while the bot is thinking', midAnswer.opened === true,
+      midAnswer.opened ? 'the message opened for typing' : 'nothing happened');
+
+    const resent = await run(`(() => {
+      const row = document.querySelector('#botLog .bot-msg.is-user');
+      row.querySelector('.bot-edit-box').value = 'what is a mailbox alias';
+      let calledOff = false;
+      bot.inflight.signal.addEventListener('abort', () => { calledOff = true; });
+      [...row.querySelectorAll('.bot-edit-actions .bot-action')]
+        .find((b) => b.textContent === 'Ask again').click();
+      return {
+        calledOff,
+        freed: bot.busy === false || bot.busy === undefined,
+        asked: [...document.querySelectorAll('#botLog .bot-msg.is-user .bot-bubble')]
+          .map((b) => b.textContent).join(' | '),
+      };
+    })()`);
+
+    record('sending it calls off the answer in flight', resent.calledOff === true, '');
+    record('and the edited question goes instead',
+      /what is a mailbox alias/.test(resent.asked) && !/what is email attribute/.test(resent.asked),
+      resent.asked.slice(0, 60));
   } catch (err) {
     record('threw', false, err.message);
   }
