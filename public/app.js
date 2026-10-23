@@ -2462,11 +2462,17 @@ function askToConfirm(command, target) {
   const go = document.createElement('button');
   go.type = 'button';
   go.className = 'bot-action is-danger';
-  // the button says what it is about to do, which is not always a delete
+  /* The button says what it is about to do, and says which of the two it is
+     about. A write-up and a set of scenarios often carry the same name, and
+     "Yes, delete" over either of them reads identically — which is no help at
+     the one moment it matters. */
   go.textContent = {
     'clear-column': 'Yes, empty it',
     'make-test-cases': 'Yes, write them again',
     'replace-in-document': 'Yes, change it',
+    'delete-document': 'Yes, delete the write-up',
+    'delete-set': 'Yes, delete the set',
+    'delete-scenarios': 'Yes, delete them',
   }[command.kind] || 'Yes, delete';
 
   const stop = document.createElement('button');

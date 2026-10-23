@@ -129,11 +129,63 @@ const sets = async () => (await (await fetch(`${BASE}/api/products/datasprawl/en
       (blind.body.choices || []).length > 0 && blind.body.choices.every((c) => c.kind === 'document'),
       (blind.body.choices || []).map((c) => c.name).join(', ') || 'nothing offered');
 
+    /* ---- "delete this", with nothing said about which kind ----
+       On a page showing a write-up, that is the write-up. It used to go
+       hunting through the sets of scenarios instead. */
+    const stillHere = (await docs())[0];              // the first one went above
+    const bare = await ask('delete this', { documentId: stillHere.id });
+    record('"delete this" over a write-up means the write-up',
+      bare.body.command && bare.body.command.kind === 'delete-document',
+      bare.body.command ? bare.body.command.kind : String(bare.body.answer).slice(0, 44));
+    record('and names the one on the screen',
+      Boolean(bare.body.target) && bare.body.target.id === stillHere.id,
+      bare.body.target ? bare.body.target.name : 'nothing');
+
+    const inASet = await ask('delete this', { enhancementId: set.enhancement.id });
+    record('"delete this" over a set still means the set',
+      inASet.body.command && inASet.body.command.kind === 'delete-set',
+      inASet.body.command ? inASet.body.command.kind : 'not a command');
+
+    /* ---- picking from the list, when a set shares the write-up's name ----
+       "Delete this document" with nothing open offers the write-ups. The one
+       picked has the same name as a set of scenarios, and it was the set
+       that went. */
+    const twin = await (await fetch(`${BASE}/api/assistant/scenarios`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        product: 'datasprawl', name: 'Dropbox - Content Sprawl Scope',
+        scenarios: Array.from({ length: 7 }, (_, i) => ({
+          scenario: `Verify that the Dropbox scan reports item ${i + 1}.`, type: 'Positive',
+        })),
+      }),
+    })).json();
+
+    record('a set and a write-up share a name again',
+      Boolean(twin.enhancement) && (await docs()).some((d) => d.name === 'Dropbox - Content Sprawl Scope'),
+      twin.enhancement ? twin.enhancement.name : 'no set');
+
+    const blindly = await ask('delete this document');
+    const offered = (blindly.body.choices || []).find((c) => c.name === 'Dropbox - Content Sprawl Scope');
+    record('the write-up is among the choices', Boolean(offered),
+      (blindly.body.choices || []).map((c) => c.name).join(', '));
+
+    /* what the page does when that choice is clicked */
+    const aimed = { ...blindly.body.command, name: offered.name };
+    const ranIt = await run(aimed, offered);
+
+    record('picking it deletes the write-up',
+      !(await docs()).some((d) => d.name === 'Dropbox - Content Sprawl Scope'),
+      ranIt.body.done || ranIt.body.error);
+    record('and the set of the same name stays',
+      (await sets()).some((s) => s.name === 'Dropbox - Content Sprawl Scope'),
+      (await sets()).map((s) => s.name).join(', ') || 'all gone');
+
     /* ---- renaming, said the way people say it ----
        "Edit that name as X" reached the model, which answered that it could
        not help with renaming files. Nobody had asked it to. */
+    const left = await upload('Egnyte scope again');
     const renamed = await ask('edit that name as Dropbox sprawl scope',
-      { documentId: (await docs())[0].id });
+      { documentId: left.document.id });
 
     record('"edit that name as X" is an instruction',
       renamed.body.command && renamed.body.command.kind === 'rename-document',
@@ -155,8 +207,11 @@ const sets = async () => (await (await fetch(`${BASE}/api/products/datasprawl/en
       other.body.command && other.body.command.kind === 'delete-set',
       other.body.command ? other.body.command.kind : 'not a command');
 
+    const before = (await docs()).length;
     const gone = await run(other.body.command, other.body.target);
-    record('and it is the set that goes', (await sets()).length === 0 && (await docs()).length === 1,
+    record('and it is the set that goes',
+      !(await sets()).some((s) => s.name === 'Egnyte - Content Sprawl Scope')
+        && (await docs()).length === before,
       gone.body.done || gone.body.error);
   } catch (err) {
     record('threw', false, err.message);

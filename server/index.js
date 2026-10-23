@@ -1159,8 +1159,16 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
 
   /* An instruction to change something is answered here rather than by the
      model: it has to mean the same thing every time it is given. */
-  const command = parseCommand(question);
+  let command = parseCommand(question);
   if (command) {
+    /* "Delete this", with no noun to say which kind of thing, means the thing
+       on the screen. Reading it as a set of scenarios whatever is on the
+       screen means it goes hunting through the sets while a write-up sits
+       open in front of it. */
+    if (command.kind === 'delete-set' && command.open && !open && currentDocument) {
+      command = { ...command, kind: 'delete-document', object: 'document', name: null };
+    }
+
     let target = await targetOf(command, open ? open.id : null, currentDocument);
     let becauseOfThePicture = '';
 
