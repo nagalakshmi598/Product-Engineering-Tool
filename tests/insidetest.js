@@ -145,6 +145,37 @@ const aboutTheFeature = (rows) => rows.some((s) => /archived channels|direct mes
       (attached.documents || [])[0] && attached.documents[0].product === 'content',
       (attached.documents || [])[0] ? attached.documents[0].product : 'nothing filed');
 
+    /* ---- named the way people name them ----
+       Nobody types "Slack Message Sprawl- InScope". They type what the
+       write-up is about, and mean that one and no other. Asking for
+       "confluence to sharepoint" used to find nothing, fall back to reading
+       the whole shelf, and file the result under "The user". */
+    for (const said of [
+      'write test scenarios for slack message sprawl inscope',
+      'write test scenarios for the slack inscope write-up',
+    ]) {
+      const out = await ask(said, { currentProduct: 'datasprawl' });
+      const got = (out.body.draft && out.body.draft.scenarios) || [];
+      record(`"${said.slice(0, 46)}"`,
+        aboutTheFeature(got) && !aboutUploading(got),
+        out.body.draft ? `${got.length} from "${out.body.draft.name}"` : String(out.body.answer).slice(0, 40));
+    }
+
+    const loose = await ask('write test scenarios for slack message sprawl inscope',
+      { currentProduct: 'datasprawl' });
+    record('and the set is named after the write-up',
+      loose.body.draft && loose.body.draft.name === 'Slack Message Sprawl- InScope',
+      loose.body.draft ? loose.body.draft.name : 'no draft');
+    record('not after whatever the first scenario mentions',
+      !loose.body.draft || !/^(?:The|An?)\s+(?:user|system|error)/i.test(loose.body.draft.name),
+      loose.body.draft ? loose.body.draft.name : '');
+
+    const vague = await ask('write test scenarios for content sprawl across the clouds',
+      { currentProduct: 'datasprawl' });
+    record('a phrase that fits every write-up picks none',
+      Boolean(vague.body.draft) || Boolean(vague.body.drafts),
+      vague.body.draft ? `drafted "${vague.body.draft.name}" the ordinary way` : 'per write-up');
+
     /* ---- naming it works without anything open ---- */
     const byName = await ask('write test scenarios for Slack Message Sprawl- InScope',
       { currentProduct: 'datasprawl' });

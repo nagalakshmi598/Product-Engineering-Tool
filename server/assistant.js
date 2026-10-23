@@ -1491,9 +1491,26 @@ function titleFor(feature, scenarios) {
 
   if (section) return enhancementName(section);
 
-  const first = (scenarios[0] || {}).scenario || '';
-  const subject = first.replace(/^verify that\s+/i, '').split(/\s+(?:is|are|can|should|will|does|do)\s+/)[0];
-  return enhancementName(subject || fromAsk || 'Drafted scenarios');
+  /* What the first scenario is about — unless that is "the user" or "the
+     system", which every scenario in every set is about and which named a
+     set of twenty Confluence-to-SharePoint scenarios "The user". Where the
+     opening one says nothing, a later one usually does. */
+  const anybody = new RegExp(
+    '^(?:the|a|an)?\\s*(?:'
+      + 'users?|system|tool|application|app|admins?|administrators?|migration'
+      + '|(?:an?\\s+)?(?:error\\s+)?messages?|results?|process|page|screen'
+    + ')?\\s*$',
+    'i'
+  );
+
+  const subjects = scenarios
+    .map((s) => String(s.scenario || '')
+      .replace(/^verify that\s+/i, '')
+      .split(/\s+(?:is|are|can|should|will|does|do)\s+/)[0]
+      .trim())
+    .filter((s) => s && !anybody.test(s));
+
+  return enhancementName(subjects[0] || fromAsk || 'Drafted scenarios');
 }
 
 /** A title for the enhancement the rows will live under. */
@@ -1624,11 +1641,85 @@ const POINTS_AT_A_WRITE_UP = new RegExp(
 function writeUpsNamed(question, documents) {
   const q = String(question || '').toLowerCase();
 
-  return documents
+  const exact = documents
     .map((doc) => ({ doc, at: q.indexOf(doc.name.toLowerCase()) }))
     .filter((hit) => hit.at !== -1)
     .sort((a, b) => a.at - b.at)
     .map((hit) => hit.doc);
+
+  if (exact.length) return exact;
+
+  /* Nobody types "Confluence-to-SharePoint-Migration-Walkthrough (1)". They
+     type "confluence to sharepoint", and mean that write-up and no other. */
+  const meant = theOneMeant(q, documents);
+  return meant ? [meant] : [];
+}
+
+/* Words that are in half the titles on the shelf and so say nothing about
+   which one is meant. Worked out from the shelf rather than listed, because
+   what is common depends on what is on it: "sprawl" tells you nothing here
+   and might be the whole of it somewhere else. */
+const NOT_A_WORD = new Set([
+  'the', 'a', 'an', 'to', 'of', 'for', 'and', 'in', 'on', 'with', 'from', 'by',
+]);
+
+function titleWords(name) {
+  return String(name || '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length > 2 && !NOT_A_WORD.has(w));
+}
+
+/**
+ * The write-up a question means, when it does not spell out the whole name.
+ *
+ * A title's own words are what identify it, but only the ones that are not
+ * all over the shelf: every Data Sprawl write-up is a "Content Sprawl Scope",
+ * so those three words pick out nothing, while "Egnyte" picks out exactly
+ * one. Which words are worth anything is counted off the shelf itself.
+ *
+ * One answer or none. Two write-ups equally meant is not an answer, and
+ * guessing between them is worse than reading the whole shelf.
+ */
+function theOneMeant(question, documents) {
+  /* Whole words. "Scope" is not in "InScope", and reading it as though it
+     were made two Slack write-ups score the same and cancel each other out. */
+  const asked = new Set(titleWords(question));
+  if (!asked.size) return null;
+
+  const seen = new Map();
+  documents.forEach((doc) => {
+    new Set(titleWords(doc.name)).forEach((w) => seen.set(w, (seen.get(w) || 0) + 1));
+  });
+
+  const scored = documents.map((doc) => {
+    const words = [...new Set(titleWords(doc.name))];
+
+    /* Its own words: ones that appear in no other title, or in one other at
+       most where it has nothing better. */
+    let its = words.filter((w) => seen.get(w) === 1);
+    if (!its.length) its = words.filter((w) => seen.get(w) <= 2);
+    if (!its.length) return { doc, score: 0, share: 0 };
+
+    const matched = its.filter((w) => asked.has(w));
+
+    /* A word that belongs to one write-up says more than a word two of them
+       share. "InScope" settles it; "Slack" only narrows it. */
+    const score = matched.reduce((n, w) => n + (1 / seen.get(w)), 0);
+
+    return { doc, score, share: matched.length / its.length };
+  });
+
+  const best = scored.filter((s) => s.score > 0 && s.share >= 0.5)
+    .sort((a, b) => b.score - a.score || b.share - a.share);
+
+  if (!best.length) return null;
+
+  /* Two equally meant is not an answer, and guessing between them is worse
+     than reading the whole shelf. */
+  if (best.length > 1 && best[0].score === best[1].score) return null;
+
+  return best[0].doc;
 }
 
 /**
@@ -1697,7 +1788,10 @@ async function draftPerWriteUp(documents, { provider, model, history, system, qu
          came from. */
       sets.push({
         name: doc.name,
-        scenarios: rows.map((row) => ({ ...row, section: row.section || doc.name })),
+        scenarios: rows.map((row) => ({
+          ...row,
+          section: row.section || (prefixSections ? doc.name : ''),
+        })),
       });
       total += rows.length;
     } catch (err) {
