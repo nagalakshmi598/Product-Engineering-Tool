@@ -231,3 +231,29 @@ spent.
 Every line in these was got wrong once. Run `npm test` before committing: a
 change that breaks one of them is a regression, and the point is to find that
 out here rather than in the chat panel a day later.
+
+## The one dependency advisory that npm cannot fix
+
+`npm audit` reports a high-severity pair against `xlsx` — Prototype Pollution
+and a ReDoS, both reached by parsing a crafted spreadsheet. This tool parses
+uploaded `.xlsx` in two places (`server/parse.js` for scenario sheets,
+`server/attachments.js` for files dropped into the chat), so the path is real.
+
+`npm audit fix` cannot touch it. The copy on the npm registry was abandoned at
+0.18.5; SheetJS publishes to its own CDN now. Upgrading is one command:
+
+```bash
+npm install https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz
+npm test
+```
+
+Only `read` and `sheet_to_json` are used here, and neither changed between
+0.18 and 0.20, so the suite passing is the whole check. To go back:
+
+```bash
+git checkout package.json package-lock.json && npm install
+```
+
+The cost of taking it is that `npm install` then needs `cdn.sheetjs.com`
+reachable from wherever this is deployed. On a server without outbound access,
+commit the tarball alongside the code and install from the path instead.
