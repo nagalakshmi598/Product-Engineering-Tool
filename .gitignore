@@ -18,3 +18,6 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 Untitled-*.txt
+
+# a clone of this repo made inside it
+Product-Engineering-Tool/
