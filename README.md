@@ -67,6 +67,17 @@ Dashboard
 - **Edit** next to an enhancement name renames it in place.
 - **Search** — filter enhancements, filter scenarios inside one enhancement, or filter documents
   within the active tab.
+- **The chat panel** — everything above can be asked for in words instead: drafting scenarios,
+  generating test cases, deleting, renaming and moving things, and writing documents. Two of
+  those make a write-up without anyone uploading a file:
+  - *Describe a functionality and ask for the document.* "Create a document for this
+    functionality: a canvas untouched for 90 days is marked expired and becomes read-only."
+    The write-up is written from the description — a section per case, the behaviour a bullet
+    at a time — and filed under the product you asked from. Say the feature in one message and
+    ask in the next and it still works; the description is taken from what you said. Nothing is
+    invented: anything the description leaves open comes back as an **Open Points** section.
+  - *Attach a screen recording and ask for the document.* The clip is read screen by screen into
+    a numbered walkthrough with every screenshot kept.
 
 ## Database
 
@@ -157,6 +168,7 @@ See [samples/sample-test-scenarios.csv](samples/sample-test-scenarios.csv) for t
 | `server/words.js` | Correcting the words an instruction is made of |
 | `server/walkthrough.js` | Turning a screen recording into a step-by-step guide |
 | `server/guides.js` | Writing a guide into the tool as a write-up |
+| `server/specs.js` | Writing up a functionality described in the chat, and filing it |
 | `server/video.js` | Pulling the screens out of a recording |
 | `server/pointing.js` | Reading a screenshot to find which thing was meant |
 | `server/paths.js` | Where data and uploads live (CF_DATA_DIR, CF_UPLOAD_DIR) |
@@ -226,6 +238,7 @@ spent.
 | `persetest.js` | A set each, when a set each is asked for |
 | `agenttest.js` | Everything the tool does can be asked for in the chat |
 | `guidetest.js` | A recording, written up as a guide with its screenshots |
+| `spectest.js` | A functionality described in the chat, written up and filed as a write-up |
 | `toolstest.js` | Copy and edit under a message (drives a real Chrome; skipped if none) |
 
 Every line in these was got wrong once. Run `npm test` before committing: a

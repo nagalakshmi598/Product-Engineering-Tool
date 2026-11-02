@@ -160,4 +160,4 @@ async function writeGuide({ title, product = '', intro = '', steps = [] }) {
   });
 }
 
-module.exports = { writeGuide, imageExtension, DOC_ROOT, documentFilePath };
+module.exports = { writeGuide, imageExtension, escapeHtml, richText, DOC_ROOT, documentFilePath };

@@ -19,6 +19,7 @@ const LABELLED_SHEETS = new Set(['diy']);
 const { askAssistant, guessProduct, justFileIt } = require('./assistant');
 const attachments = require('./attachments');
 const { writeWalkthrough, wantsAGuide } = require('./walkthrough');
+const { writeSpec, wantsAWriteUp, whatToWriteAbout } = require('./specs');
 const { whichOneIsShown, picturesIn } = require('./pointing');
 const { MAX_GUIDE_FRAMES } = require('./video');
 const { parseCommand, describeCommand, readsAsAnInstruction } = require('./commands');
@@ -1326,6 +1327,55 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
       guide: { steps: written.steps, screenshots: written.used, screens: written.screens },
       attachments: read.map(({ name, kind, note }) => ({ name, kind, note })),
       documents: filed,
+      model: 'built-in',
+      provider: 'local',
+    });
+  }
+
+  /* Asked for a document with nothing to make one from but the words in the
+     chat: the functionality was described, and the write-up of it is what is
+     wanted. It is written and filed here and now — nobody opens Word, nobody
+     picks a file, nobody uploads anything.
+     This is the same ask as the one above with the recording taken away, so
+     it sits behind it: a clip attached still makes a walkthrough, and a file
+     attached is still the document, which is why both are ruled out first. */
+  if (!clips.length && !(req.files || []).length && wantsAWriteUp(question)) {
+    const about = whatToWriteAbout(question, history);
+
+    /* "Create a document" and nothing else. Writing one anyway would be
+       inventing the feature, so it asks instead. */
+    if (!about) {
+      return res.json({
+        answer: [
+          'Tell me the functionality and I will write it up and file it.',
+          '',
+          'Say what it does, which paths or cases it covers, and what the user',
+          'sees — as much or as little as you have. I will write only what you',
+          'say, and list anything left open at the end.',
+        ].join('\n'),
+        model: 'built-in',
+        provider: 'local',
+      });
+    }
+
+    const written = await writeSpec({
+      question,
+      history,
+      product: guessProduct(String(question || ''), (open && open.product) || currentProduct),
+    });
+
+    const labels = await store.listProducts();
+    const label = (labels.find((p) => p.key === written.document.product) || {}).label;
+
+    const answer = `I wrote it up as "${written.title}" and filed it`
+      + `${label ? ` under ${label}` : ''} — ${plural(written.sections, 'section')}, `
+      + `${plural(written.bullets, 'point')}, from what you described. `
+      + 'It is on the Documents page. Tell me what to change and I will change it, '
+      + 'or say the word and I will write test scenarios from it.';
+
+    return res.json({
+      answer,
+      document: store.documentSummary(written.document),
       model: 'built-in',
       provider: 'local',
     });

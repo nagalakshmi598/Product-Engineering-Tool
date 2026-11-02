@@ -2801,16 +2801,19 @@ async function askBot(question) {
 
     botBubble('bot', result.answer);
 
-    /* A guide written from a recording is a document, and the thing to do
-       with it is read it. */
-    if (result.guide && result.document) {
+    /* A document the bot wrote itself — a guide from a recording, a write-up
+       from a description — is already filed. The thing to do with it is read
+       it, so the way in is put under the sentence that announced it. */
+    if (result.document) {
+      await loadProducts();
+
       const row = document.createElement('div');
       row.className = 'bot-actions';
 
       const open = document.createElement('button');
       open.type = 'button';
       open.className = 'bot-action';
-      open.textContent = 'Open the guide';
+      open.textContent = result.guide ? 'Open the guide' : 'Open the document';
       open.addEventListener('click', () => openDocuments({ expand: result.document.id }));
 
       row.appendChild(open);

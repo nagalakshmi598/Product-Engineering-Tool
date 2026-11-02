@@ -27,6 +27,7 @@ const SUITES = [
   ['per write-up', 'persetest.js', 'a set each, when a set each is asked for'],
   ['agent', 'agenttest.js', 'everything the tool does, asked for in the chat'],
   ['recordings', 'guidetest.js', 'a recording, written up as a guide'],
+  ['write-ups', 'spectest.js', 'describe it, and it is written up'],
   ['chat ui', 'toolstest.js', 'copy and edit, under a message'],
 ];
 
