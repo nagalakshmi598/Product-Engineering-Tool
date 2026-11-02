@@ -393,6 +393,11 @@ async function writeSpec({ question, history = [], product = '' }) {
     title,
     sections: sections.length,
     bullets: sections.reduce((n, s) => n + s.bullets.length, 0),
+
+    /* The write-up as it was written, rather than as it was stored. The
+       chat shows it where it was asked for — the Documents page is a click
+       away, not the only place it can be read. */
+    page: { title, intro, sections },
   };
 }
 

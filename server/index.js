@@ -1376,6 +1376,7 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
     return res.json({
       answer,
       document: store.documentSummary(written.document),
+      writeUp: written.page,
       model: 'built-in',
       provider: 'local',
     });

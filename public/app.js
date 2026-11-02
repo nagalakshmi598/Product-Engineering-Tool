@@ -2667,6 +2667,92 @@ function botOpenLink(id, name) {
 }
 
 /** The row of actions under a drafted answer. */
+/* ---------------- a write-up, read where it was asked for ----------------
+ *
+ * A document the bot writes from a description is filed on the Documents
+ * page, and used to be announced with nothing but a link to it — so reading
+ * what you just asked for meant leaving the conversation that produced it.
+ * It is shown here as it reads instead, and the link stays for the times the
+ * whole page is wanted.
+ */
+
+/** Text as a text node sees it: safe to put inside an element. */
+function asPlainText(text) {
+  const box = document.createElement('div');
+  box.textContent = String(text == null ? '' : text);
+  return box.innerHTML;
+}
+
+/** **bold** and --> as the stored write-up renders them, and nothing else. */
+function writeUpHtml(text) {
+  return asPlainText(text)
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(?:--|—)&gt;|-&gt;/g, '→');
+}
+
+function showWriteUp(page) {
+  const card = document.createElement('article');
+  card.className = 'bot-doc';
+
+  const parts = [`<h4>${writeUpHtml(page.title)}</h4>`];
+  if (page.intro) parts.push(`<p class="bot-doc-intro">${writeUpHtml(page.intro)}</p>`);
+
+  (page.sections || []).forEach((section) => {
+    /* What the description did not settle is kept visibly apart from what
+       it did, because the two are read for different reasons. */
+    const open = /^open\s+points$/i.test(section.heading || '');
+
+    parts.push(`<section${open ? ' class="is-open-points"' : ''}>`);
+    parts.push(`<h5>${writeUpHtml(section.heading)}</h5>`);
+    if (section.text) parts.push(`<p>${writeUpHtml(section.text)}</p>`);
+
+    if ((section.bullets || []).length) {
+      parts.push('<ul>');
+      section.bullets.forEach((b) => parts.push(`<li>${writeUpHtml(b)}</li>`));
+      parts.push('</ul>');
+    }
+    parts.push('</section>');
+  });
+
+  card.innerHTML = parts.join('');
+  el('botLog').appendChild(card);
+  return card;
+}
+
+/** The same write-up as Markdown — the shape the tool takes back on upload. */
+function writeUpMarkdown(page) {
+  const lines = [`# ${page.title}`, ''];
+  if (page.intro) lines.push(page.intro, '');
+
+  (page.sections || []).forEach((section) => {
+    lines.push(`## ${section.heading}`, '');
+    if (section.text) lines.push(section.text, '');
+    (section.bullets || []).forEach((b) => lines.push(`- ${b}`));
+    lines.push('');
+  });
+
+  return `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()}\n`;
+}
+
+/* Saved as .md rather than .html because .md is a format the Documents page
+   accepts back: the file can go straight to a colleague's tool. */
+function saveWriteUp(page) {
+  const named = String(page.title || '')
+    .replace(/[^\w\s.-]/g, '').trim().replace(/\s+/g, '-') || 'write-up';
+
+  const url = URL.createObjectURL(
+    new Blob([writeUpMarkdown(page)], { type: 'text/markdown;charset=utf-8' })
+  );
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${named}.md`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function botDraftActions(draft) {
   const wrap = document.createElement('div');
   wrap.className = 'bot-actions';
@@ -2807,6 +2893,11 @@ async function askBot(question) {
     if (result.document) {
       await loadProducts();
 
+      /* Written from what was said in this conversation, so it is read in
+         it. A guide from a recording keeps its link and nothing more: its
+         screenshots belong on the page, not in a chat panel. */
+      if (result.writeUp) showWriteUp(result.writeUp);
+
       const row = document.createElement('div');
       row.className = 'bot-actions';
 
@@ -2817,6 +2908,25 @@ async function askBot(question) {
       open.addEventListener('click', () => openDocuments({ expand: result.document.id }));
 
       row.appendChild(open);
+
+      if (result.writeUp) {
+        const page = result.writeUp;
+
+        const copy = document.createElement('button');
+        copy.type = 'button';
+        copy.className = 'bot-action';
+        copy.textContent = 'Copy as Markdown';
+        copy.addEventListener('click', () => copyText(writeUpMarkdown(page)));
+        row.appendChild(copy);
+
+        const save = document.createElement('button');
+        save.type = 'button';
+        save.className = 'bot-action';
+        save.textContent = 'Save .md';
+        save.addEventListener('click', () => saveWriteUp(page));
+        row.appendChild(save);
+      }
+
       el('botLog').appendChild(row);
       el('botLog').scrollTop = el('botLog').scrollHeight;
     }

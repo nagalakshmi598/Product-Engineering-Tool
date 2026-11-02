@@ -147,6 +147,25 @@ async function contentsOf(id) {
     record('it reads as a write-up, not as numbered steps',
       /<h3>/.test(html) && !/<h3>Step 1/.test(html), '');
 
+    /* ---- the write-up comes back with the answer ----
+       The chat panel renders it where it was asked for, so it needs the
+       write-up itself and not only a link to the page it was filed on. */
+    const page = made.body.writeUp;
+
+    record('the write-up comes back with the reply',
+      Boolean(page) && page.title === 'Canvas Retention Window',
+      page ? page.title : 'nothing to render');
+    record('its sections carry their bullets',
+      Boolean(page) && page.sections.length > 0
+        && page.sections.every((s) => s.heading && Array.isArray(s.bullets)),
+      page ? `${page.sections.length} sections` : '');
+    record('and it is the same thing that was filed',
+      Boolean(page) && page.sections.some((s) => s.bullets.some((b) => /\*\*Expired\*\*/.test(b))),
+      page ? page.sections[0].bullets[0].slice(0, 54) : '');
+    record('the questions ride along too',
+      Boolean(page) && page.sections.some((s) => s.heading === 'Open Points'),
+      page ? page.sections.map((s) => s.heading).join(' · ').slice(0, 56) : '');
+
     /* What the description did not settle is the half of the write-up that
        makes it honest — and a model told in prose to add it decides it was
        told enough, so it is asked for as a list of its own. */

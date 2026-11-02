@@ -76,6 +76,9 @@ Dashboard
     at a time — and filed under the product you asked from. Say the feature in one message and
     ask in the next and it still works; the description is taken from what you said. Nothing is
     invented: anything the description leaves open comes back as an **Open Points** section.
+    The write-up is shown in the chat as it reads, with **Copy as Markdown** and **Save .md**
+    beside the link to it — .md is a format the Documents page takes back, so a write-up can be
+    handed to somebody else's tool.
   - *Attach a screen recording and ask for the document.* The clip is read screen by screen into
     a numbered walkthrough with every screenshot kept.
 

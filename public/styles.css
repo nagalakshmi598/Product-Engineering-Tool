@@ -736,6 +736,36 @@ body {
 .bot-action.is-danger:hover { background: #a31f1f; border-color: #a31f1f; }
 .bot-actions-note { font-size: 11px; color: var(--faint); margin-left: 2px; }
 
+/* a write-up the bot wrote, read where it was asked for rather than only
+   linked to — the same shape it has on the Documents page, at chat size */
+.bot-doc {
+  background: var(--white); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 14px 16px 16px;
+  font-size: 13px; line-height: 1.6; color: var(--body);
+  max-width: 100%; min-width: 0; overflow-wrap: anywhere;
+}
+.bot-doc h4 {
+  margin: 0; font-size: 15px; font-weight: 700; line-height: 1.3; color: var(--text);
+}
+.bot-doc .bot-doc-intro { margin: 6px 0 0; color: var(--faint); }
+.bot-doc section { margin-top: 14px; }
+.bot-doc h5 {
+  margin: 0; font-size: 13px; font-weight: 700; color: var(--text);
+  padding-bottom: 4px; border-bottom: 1px solid var(--border);
+}
+.bot-doc p { margin: 6px 0 0; }
+.bot-doc ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; }
+.bot-doc li { margin: 0; }
+.bot-doc strong { font-weight: 700; color: var(--text); }
+
+/* what the description did not settle, kept apart from what it did */
+.bot-doc section.is-open-points {
+  background: var(--warn-bg); border: 1px solid var(--warn-line);
+  border-radius: var(--radius-btn); padding: 10px 12px 12px;
+}
+.bot-doc section.is-open-points h5 { color: var(--warn); border-bottom-color: var(--warn-line); }
+.bot-doc section.is-open-points p { color: var(--faint); }
+
 /* a Section column, when a drafted set brought one, stays out of the way */
 .scenario-table td:nth-child(3):not(.status-cell):not(.act) {
   color: var(--muted); font-size: 12.5px;

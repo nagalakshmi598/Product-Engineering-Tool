@@ -266,6 +266,54 @@ function talk(url) {
     record('and the edited question goes instead',
       /what is a mailbox alias/.test(resent.asked) && !/what is email attribute/.test(resent.asked),
       resent.asked.slice(0, 60));
+
+    /* ---- a write-up, read in the chat that produced it ----
+       It used to be announced with a link and nothing else, so reading what
+       you had just asked for meant leaving the conversation. */
+    const card = await run(`(() => {
+      showWriteUp({
+        title: 'Canvas Retention Window',
+        intro: 'This write-up specifies the behaviour described.',
+        sections: [
+          { heading: 'Retention Window', text: 'Applies to every canvas.',
+            bullets: ['A canvas untouched for 90 days is marked **Expired**.',
+                      'Slack --> Teams keeps the name.'] },
+          { heading: 'Open Points', text: 'The description did not settle these.',
+            bullets: ['Who may restore one?'] },
+        ],
+      });
+
+      const doc = document.querySelector('#botLog .bot-doc');
+      const open = doc.querySelector('section.is-open-points');
+      const plain = doc.querySelector('section:not(.is-open-points)');
+      return {
+        title: doc.querySelector('h4').textContent,
+        headings: [...doc.querySelectorAll('h5')].map((h) => h.textContent),
+        bullets: doc.querySelectorAll('li').length,
+        bolded: doc.querySelectorAll('strong').length,
+        arrow: /→/.test(doc.textContent) && !/--&gt;|-&gt;/.test(doc.innerHTML),
+        apart: getComputedStyle(open).backgroundColor !== getComputedStyle(plain).backgroundColor,
+        fits: doc.getBoundingClientRect().right <= document.querySelector('#botLog').getBoundingClientRect().right + 1,
+      };
+    })()`);
+
+    record('the write-up is shown in the chat', card.title === 'Canvas Retention Window', card.title);
+    record('a section each, in order', card.headings.join(' · ') === 'Retention Window · Open Points',
+      card.headings.join(' · '));
+    record('with its bullets', card.bullets === 3, `${card.bullets} bullets`);
+    record('on-screen labels are bold', card.bolded === 1, `${card.bolded} bolded`);
+    record('and --> is drawn as an arrow', card.arrow === true, '');
+    record('Open Points is set apart from what was said', card.apart === true, '');
+    record('and it stays inside the panel', card.fits === true, '');
+
+    const md = await run(`writeUpMarkdown({
+      title: 'Canvas Retention Window', intro: 'One line.',
+      sections: [{ heading: 'Retention Window', text: '', bullets: ['A canvas expires.'] }],
+    })`);
+
+    record('it copies out as Markdown the tool takes back',
+      md === '# Canvas Retention Window\n\nOne line.\n\n## Retention Window\n\n- A canvas expires.\n',
+      JSON.stringify(md).slice(0, 62));
   } catch (err) {
     record('threw', false, err.message);
   }
