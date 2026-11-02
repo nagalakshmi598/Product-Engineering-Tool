@@ -2683,6 +2683,12 @@ function asPlainText(text) {
   return box.innerHTML;
 }
 
+/* Safe between quotes in an attribute, which asPlainText is not: a text node
+   serialises a quote as itself. */
+function asAttr(text) {
+  return asPlainText(text).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 /** **bold** and --> as the stored write-up renders them, and nothing else. */
 function writeUpHtml(text) {
   return asPlainText(text)
@@ -2698,11 +2704,7 @@ function showWriteUp(page) {
   if (page.intro) parts.push(`<p class="bot-doc-intro">${writeUpHtml(page.intro)}</p>`);
 
   (page.sections || []).forEach((section) => {
-    /* What the description did not settle is kept visibly apart from what
-       it did, because the two are read for different reasons. */
-    const open = /^open\s+points$/i.test(section.heading || '');
-
-    parts.push(`<section${open ? ' class="is-open-points"' : ''}>`);
+    parts.push('<section>');
     parts.push(`<h5>${writeUpHtml(section.heading)}</h5>`);
     if (section.text) parts.push(`<p>${writeUpHtml(section.text)}</p>`);
 
@@ -2711,6 +2713,14 @@ function showWriteUp(page) {
       section.bullets.forEach((b) => parts.push(`<li>${writeUpHtml(b)}</li>`));
       parts.push('</ul>');
     }
+
+    /* A guide written from a recording carries the screen each step was done
+       on. They are the whole use of that document, so they are shown here
+       rather than being the one thing you have to leave the chat to see. */
+    (section.images || []).forEach((src) => {
+      parts.push(`<img class="bot-doc-shot" src="${asAttr(src)}" alt="${asAttr(section.heading)}" loading="lazy" />`);
+    });
+
     parts.push('</section>');
   });
 
@@ -2728,6 +2738,8 @@ function writeUpMarkdown(page) {
     lines.push(`## ${section.heading}`, '');
     if (section.text) lines.push(section.text, '');
     (section.bullets || []).forEach((b) => lines.push(`- ${b}`));
+    if ((section.images || []).length) lines.push('');
+    (section.images || []).forEach((src) => lines.push(`![${section.heading}](${src})`));
     lines.push('');
   });
 
@@ -2893,9 +2905,8 @@ async function askBot(question) {
     if (result.document) {
       await loadProducts();
 
-      /* Written from what was said in this conversation, so it is read in
-         it. A guide from a recording keeps its link and nothing more: its
-         screenshots belong on the page, not in a chat panel. */
+      /* Written from what was said in this conversation, or from a recording
+         handed over in it, so it is read in it — screenshots and all. */
       if (result.writeUp) showWriteUp(result.writeUp);
 
       const row = document.createElement('div');

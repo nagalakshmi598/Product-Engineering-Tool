@@ -74,13 +74,17 @@ Dashboard
     functionality: a canvas untouched for 90 days is marked expired and becomes read-only."
     The write-up is written from the description — a section per case, the behaviour a bullet
     at a time — and filed under the product you asked from. Say the feature in one message and
-    ask in the next and it still works; the description is taken from what you said. Nothing is
-    invented: anything the description leaves open comes back as an **Open Points** section.
-    The write-up is shown in the chat as it reads, with **Copy as Markdown** and **Save .md**
-    beside the link to it — .md is a format the Documents page takes back, so a write-up can be
-    handed to somebody else's tool.
-  - *Attach a screen recording and ask for the document.* The clip is read screen by screen into
-    a numbered walkthrough with every screenshot kept.
+    ask in the next and it still works; the description is taken from what you said. It writes
+    the document out in full and nothing else: only what you described, no questions back, no
+    section about what it was not told. The write-up is shown in the chat as it reads, with
+    **Copy as Markdown** and **Save .md** beside the link to it — .md is a format the Documents
+    page takes back, so a write-up can be handed to somebody else's tool.
+  - *Attach a screen recording and ask for the document.* The whole clip is read, front to
+    back, into a numbered walkthrough — a step per action, what you clicked in bold, and the
+    screen it was done on under it, cut from the recording itself. Where the screen changed
+    more times than fit in one document, the screens kept are spread across the recording
+    rather than taken off the front, so a guide of a long migration still reaches the end of
+    it. The guide is shown in the chat too, screenshots and all.
 
 ## Database
 

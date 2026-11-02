@@ -56,8 +56,8 @@ function spec(text) {
       : /group dm/i.test(text) ? 'Group DM Name Migration'
         : 'The user uploads a document';
 
-  /* A model that writes its own Open Points section, so the one the tool
-     adds does not land on top of it. */
+  /* A model that writes its own Open Points section although it was told
+     not to, so that the taking of it back off is what is being tested. */
   if (/group dm/i.test(text)) {
     sections.push({
       heading: 'Open Points',

@@ -1304,7 +1304,12 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
      every screen is wanted rather than a sample of them, and what comes back
      is a document rather than an answer. The guide is read at full depth;
      everything else is read as it always was. */
-  const guideWanted = attachments.hasVideo(req.files) && wantsAGuide(question);
+  /* "Write this up", "create a spec for this", "document this functionality"
+     are the same ask as "make a document" and used to be read as one only
+     when no recording came with them. With a recording attached they mean
+     the recording, so the wider wording counts here too. */
+  const guideWanted = attachments.hasVideo(req.files)
+    && (wantsAGuide(question) || wantsAWriteUp(question));
 
   const read = await attachments.readAll(req.files, guideWanted ? { videoFrames: MAX_GUIDE_FRAMES } : {});
 
@@ -1316,14 +1321,18 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
       product: guessProduct(String(question || ''), (open && open.product) || currentProduct),
     });
 
-    const answer = `I watched ${plural(clips.length, 'recording')} and wrote it up as `
+    const answer = `I watched ${plural(clips.length, 'recording')} end to end and wrote it up as `
       + `"${written.document.name}" — ${plural(written.steps, 'step')} with `
-      + `${plural(written.used, 'screenshot')}, read from ${plural(written.screens, 'screen')}. `
-      + 'It is on the Documents page. Tell me what to change and I will change it.';
+      + `${plural(written.used, 'screenshot')} taken from the recording itself, `
+      + `read from ${plural(written.screens, 'screen')}. `
+      + 'It is below and on the Documents page. Tell me what to change and I will change it.';
 
     return res.json({
       answer,
       document: store.documentSummary(written.document),
+      /* Read where it was asked for, screenshots included — the same field
+         a write-up from a description comes back on. */
+      writeUp: written.page,
       guide: { steps: written.steps, screenshots: written.used, screens: written.screens },
       attachments: read.map(({ name, kind, note }) => ({ name, kind, note })),
       documents: filed,
@@ -1350,8 +1359,8 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
           'Tell me the functionality and I will write it up and file it.',
           '',
           'Say what it does, which paths or cases it covers, and what the user',
-          'sees — as much or as little as you have. I will write only what you',
-          'say, and list anything left open at the end.',
+          'sees — as much or as little as you have, and I will write it out in',
+          'full. Or attach the recording and I will write it up from that.',
         ].join('\n'),
         model: 'built-in',
         provider: 'local',

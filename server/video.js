@@ -37,6 +37,16 @@ const MAX_GUIDE_FRAMES = 200;
 /* Wide enough to read a button's label, small enough to send two dozen of. */
 const FRAME_WIDTH = 1100;
 
+/* How many screens are looked at before any thinning out.
+ *
+ * Stopping ffmpeg at the number of screens that are wanted stops it where it
+ * reaches them, which on a long recording is somewhere in the middle: the
+ * guide then runs from signing in to halfway and ends there, having never
+ * seen the migration start. So more are taken than are wanted and the extras
+ * are dropped evenly afterwards, which keeps the coverage running end to end
+ * however many times the screen changed early on. */
+const LOOK_AT_MOST = 600;
+
 /* How much of the picture has to change before it counts as a new screen.
    Low enough to catch a dialog opening, high enough to ignore a cursor
    moving or a spinner turning. */
@@ -105,13 +115,33 @@ async function framesFrom(buffer, name, { max = MAX_FRAMES } = {}) {
       '-i', source,
       '-vf', `select='eq(n\\,0)+gt(scene,${SCENE_CHANGE})',scale=${FRAME_WIDTH}:-2,showinfo`,
       '-vsync', 'vfr',
-      '-frames:v', String(cap),
+      /* Deliberately more than are wanted: see LOOK_AT_MOST. The whole
+         recording is read, which takes longer than reading the front of it. */
+      '-frames:v', String(Math.max(cap, Math.min(cap * 3, LOOK_AT_MOST))),
       '-q:v', '4',
-      path.join(folder, 'scene-%03d.jpg'),
-    ]);
+      path.join(folder, 'scene-%04d.jpg'),
+    ], { timeout: 600000 });
 
     const times = [...String(said).matchAll(/pts_time:([\d.]+)/g)].map((m) => Number(m[1]));
-    const scenes = fs.readdirSync(folder).filter((f) => /^scene-\d+\.jpg$/.test(f)).sort();
+    let scenes = fs.readdirSync(folder).filter((f) => /^scene-\d+\.jpg$/.test(f)).sort();
+
+    /* More screens than are wanted, so the extras come out from between the
+       ones that are kept rather than off the end of the recording. The first
+       and the last are always among them: a walkthrough that does not start
+       at the beginning or stop at the end is the thing being avoided. */
+    let thinned = false;
+    if (scenes.length > cap) {
+      const step = cap > 1 ? (scenes.length - 1) / (cap - 1) : 0;
+      const keep = new Set();
+      for (let i = 0; i < cap; i += 1) keep.add(Math.round(i * step));
+
+      scenes.forEach((f, i) => { if (!keep.has(i)) fs.unlinkSync(path.join(folder, f)); });
+      scenes = scenes.filter((f, i) => keep.has(i));
+      /* The times are read off the kept frames, so they are thinned with them. */
+      [...keep].sort((a, b) => a - b).forEach((from, to) => { times[to] = times[from]; });
+      times.length = scenes.length;
+      thinned = true;
+    }
 
     /* A recording of one long form being filled in may never change enough to
        trip the scene test, so there is always the timer to fall back on. */
@@ -154,7 +184,8 @@ async function framesFrom(buffer, name, { max = MAX_FRAMES } = {}) {
       seconds,
       note: spacedEvenly
         ? `${frames.length} stills taken every ${Math.round(every)}s across ${Math.round(seconds)} seconds`
-        : `${frames.length} screens, taken where the screen changed, across ${Math.round(seconds)} seconds`,
+        : `${frames.length} screens, taken where the screen changed`
+          + `${thinned ? ', spread evenly' : ''}, across the whole ${Math.round(seconds)} seconds`,
     };
   } finally {
     fs.rmSync(folder, { recursive: true, force: true });

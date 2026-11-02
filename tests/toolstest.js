@@ -270,40 +270,56 @@ function talk(url) {
     /* ---- a write-up, read in the chat that produced it ----
        It used to be announced with a link and nothing else, so reading what
        you had just asked for meant leaving the conversation. */
-    const card = await run(`(() => {
+    const PIXEL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ'
+      + 'AAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+    const card = await run(`(async () => {
       showWriteUp({
-        title: 'Canvas Retention Window',
-        intro: 'This write-up specifies the behaviour described.',
+        title: 'DIY Email Migration Guide',
+        intro: 'This guide covers the migration from signing in to delta.',
         sections: [
-          { heading: 'Retention Window', text: 'Applies to every canvas.',
+          { heading: 'Step 1: Sign In', text: 'Enter your details and click **Sign In**.',
             bullets: ['A canvas untouched for 90 days is marked **Expired**.',
-                      'Slack --> Teams keeps the name.'] },
-          { heading: 'Open Points', text: 'The description did not settle these.',
-            bullets: ['Who may restore one?'] },
+                      'Slack --> Teams keeps the name.'],
+            images: ['${PIXEL}'] },
+          { heading: 'Step 2: Add the Source Cloud', text: '',
+            bullets: ['Pick the cloud.'], images: [] },
         ],
       });
 
       const doc = document.querySelector('#botLog .bot-doc');
-      const open = doc.querySelector('section.is-open-points');
-      const plain = doc.querySelector('section:not(.is-open-points)');
+      const shots = [...doc.querySelectorAll('img.bot-doc-shot')];
+      await Promise.all(shots.map((i) => i.decode().catch(() => {})));
+
+      const panel = document.querySelector('#botLog').getBoundingClientRect();
       return {
         title: doc.querySelector('h4').textContent,
         headings: [...doc.querySelectorAll('h5')].map((h) => h.textContent),
         bullets: doc.querySelectorAll('li').length,
         bolded: doc.querySelectorAll('strong').length,
         arrow: /→/.test(doc.textContent) && !/--&gt;|-&gt;/.test(doc.innerHTML),
-        apart: getComputedStyle(open).backgroundColor !== getComputedStyle(plain).backgroundColor,
-        fits: doc.getBoundingClientRect().right <= document.querySelector('#botLog').getBoundingClientRect().right + 1,
+        /* the screen each step was done on, under the step it belongs to */
+        shots: shots.length,
+        underItsStep: shots.every((i) => i.closest('section').querySelector('h5').textContent === 'Step 1: Sign In'),
+        shotFits: shots.every((i) => i.getBoundingClientRect().width > 1
+          && i.getBoundingClientRect().right <= panel.right + 1),
+        asked: doc.textContent.toLowerCase().includes('open points'),
+        fits: doc.getBoundingClientRect().right <= panel.right + 1,
       };
     })()`);
 
-    record('the write-up is shown in the chat', card.title === 'Canvas Retention Window', card.title);
-    record('a section each, in order', card.headings.join(' · ') === 'Retention Window · Open Points',
+    record('the write-up is shown in the chat', card.title === 'DIY Email Migration Guide', card.title);
+    record('a section each, in order',
+      card.headings.join(' · ') === 'Step 1: Sign In · Step 2: Add the Source Cloud',
       card.headings.join(' · '));
     record('with its bullets', card.bullets === 3, `${card.bullets} bullets`);
-    record('on-screen labels are bold', card.bolded === 1, `${card.bolded} bolded`);
+    record('on-screen labels are bold', card.bolded === 2, `${card.bolded} bolded`);
     record('and --> is drawn as an arrow', card.arrow === true, '');
-    record('Open Points is set apart from what was said', card.apart === true, '');
+    record('the screenshot from the recording is shown', card.shots === 1, `${card.shots} screenshots`);
+    record('under the step it was taken for', card.underItsStep === true, '');
+    record('scaled to the panel rather than overflowing it', card.shotFits === true, '');
+    record('nothing is asked back in the card', card.asked === false,
+      card.asked ? 'asked the reader a question' : '');
     record('and it stays inside the panel', card.fits === true, '');
 
     const md = await run(`writeUpMarkdown({
@@ -314,6 +330,17 @@ function talk(url) {
     record('it copies out as Markdown the tool takes back',
       md === '# Canvas Retention Window\n\nOne line.\n\n## Retention Window\n\n- A canvas expires.\n',
       JSON.stringify(md).slice(0, 62));
+
+    const withShots = await run(`writeUpMarkdown({
+      title: 'DIY Email Migration Guide', intro: '',
+      sections: [{ heading: 'Step 1: Sign In', text: '', bullets: ['Click **Sign In**.'],
+                   images: ['/api/documents/abc/assets/image-1.jpg'] }],
+    })`);
+
+    record('and the screenshots come with it',
+      withShots === '# DIY Email Migration Guide\n\n## Step 1: Sign In\n\n'
+        + '- Click **Sign In**.\n\n![Step 1: Sign In](/api/documents/abc/assets/image-1.jpg)\n',
+      JSON.stringify(withShots).slice(-64));
   } catch (err) {
     record('threw', false, err.message);
   }

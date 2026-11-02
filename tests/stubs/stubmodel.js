@@ -26,6 +26,11 @@ class FakeOpenAI {
           if (!images.length) throw new Error('the screens were not attached to the turn');
           if (!/image\/jpeg;base64,/.test(images[0].image_url.url)) throw new Error('a screen was not sent as an image');
 
+          /* A second recording in the same run starts counting again, so the
+             check below is about batches within one guide rather than about
+             how many have gone by. */
+          if (/These are the opening screens/.test(text)) turn = 0;
+
           turn += 1;
           /* The second batch has to be told what the first wrote, or the
              guide repeats itself from screen nine onwards. */

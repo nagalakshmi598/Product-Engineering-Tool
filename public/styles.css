@@ -758,13 +758,12 @@ body {
 .bot-doc li { margin: 0; }
 .bot-doc strong { font-weight: 700; color: var(--text); }
 
-/* what the description did not settle, kept apart from what it did */
-.bot-doc section.is-open-points {
-  background: var(--warn-bg); border: 1px solid var(--warn-line);
-  border-radius: var(--radius-btn); padding: 10px 12px 12px;
+/* the screen a step was done on, lifted out of the recording */
+.bot-doc-shot {
+  display: block; width: 100%; height: auto; margin: 8px 0 0;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--head);
 }
-.bot-doc section.is-open-points h5 { color: var(--warn); border-bottom-color: var(--warn-line); }
-.bot-doc section.is-open-points p { color: var(--faint); }
 
 /* a Section column, when a drafted set brought one, stays out of the way */
 .scenario-table td:nth-child(3):not(.status-cell):not(.act) {

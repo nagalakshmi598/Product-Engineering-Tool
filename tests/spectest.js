@@ -162,21 +162,16 @@ async function contentsOf(id) {
     record('and it is the same thing that was filed',
       Boolean(page) && page.sections.some((s) => s.bullets.some((b) => /\*\*Expired\*\*/.test(b))),
       page ? page.sections[0].bullets[0].slice(0, 54) : '');
-    record('the questions ride along too',
-      Boolean(page) && page.sections.some((s) => s.heading === 'Open Points'),
+    /* A document, not a list of what it could not answer. The reader is
+       testing against this; questions put to them are somebody else's job. */
+    record('nothing is asked back in the write-up',
+      !/Open Points|Open Questions|Assumptions/i.test(html),
+      /Open Points/i.test(html) ? 'asked the reader questions' : 'says what the feature does');
+    record('and the questions the model volunteered are dropped',
+      !/Who may restore one\?/.test(html) && !/restored after it has expired/.test(html), '');
+    record('the write-up that comes back has none either',
+      Boolean(page) && !page.sections.some((s) => /open\s+(?:points|questions)/i.test(s.heading)),
       page ? page.sections.map((s) => s.heading).join(' · ').slice(0, 56) : '');
-
-    /* What the description did not settle is the half of the write-up that
-       makes it honest — and a model told in prose to add it decides it was
-       told enough, so it is asked for as a list of its own. */
-    record('what was left open is asked at the end',
-      /<h3>Open Points<\/h3>/.test(html) && /Who may restore one\?/.test(html),
-      /Open Points/.test(html) ? 'asked' : 'nothing asked');
-    record('the questions come after the behaviour, not before',
-      html.indexOf('Open Points') > html.indexOf('read-only'), '');
-    record('and the same question is not asked twice',
-      (html.match(/restored after it has expired/g) || []).length === 1,
-      `${(html.match(/restored after it has expired/g) || []).length} time(s)`);
 
     record('and it offers scenarios rather than writing them',
       !made.body.draft && !made.body.drafts && /test scenarios/i.test(String(made.body.answer)),
@@ -199,17 +194,19 @@ async function contentsOf(id) {
     record('from what was said, not from "create document"',
       /CSV/.test(second) && !/upload/i.test(second), second.replace(/<[^>]+>/g, ' ').slice(0, 60));
 
-    /* ---- the model wrote its own Open Points section ---- */
+    /* ---- the model wrote its own Open Points section anyway ----
+       Being told not to is not enough on its own, so it is taken back off. */
     const its_own = await ask('prepare a write-up for this functionality: Group DM names are migrated '
       + 'as Group DM names in the destination and the original name is preserved.',
     { currentProduct: 'message' });
 
     const dm = its_own.body.document ? await contentsOf(its_own.body.document.id) : '';
-    record('a model that asked its own questions is left to it',
-      (dm.match(/<h3>Open Points<\/h3>/g) || []).length === 1,
-      `${(dm.match(/<h3>Open Points<\/h3>/g) || []).length} Open Points section(s)`);
-    record('and its questions are the ones kept',
-      /Which character limit applies/.test(dm), '');
+    record('a section of questions the model added is taken off',
+      !/Open Points/i.test(dm) && !/Which character limit applies/.test(dm),
+      (dm.match(/<h3>[^<]*<\/h3>/g) || []).join(' ').slice(0, 56));
+    record('and what it said about the feature is kept',
+      /Group DM name/i.test(dm) && /<h3>/.test(dm),
+      dm.replace(/<[^>]+>/g, ' ').slice(0, 56));
 
     /* ---- nothing to write about ---- */
     const empty = await ask('create a document and upload it', { currentProduct: 'message' });

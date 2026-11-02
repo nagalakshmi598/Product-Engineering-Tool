@@ -69,7 +69,9 @@ function imageExtension(buffer) {
  * @param {string} [guide.intro]      a sentence before the first step
  * @param {Array<{title: string, text: string, bullets?: string[],
  *                screenshot?: Buffer, screenshots?: Buffer[]}>} guide.steps
- * @returns {Promise<object>} the stored document
+ * @returns {Promise<{document: object, sections: Array}>} the stored document,
+ *   and the guide as it was written — headings, bullets, and the address each
+ *   screenshot was written to, for anywhere it is read outside the page.
  */
 async function writeGuide({ title, product = '', intro = '', steps = [] }) {
   const name = String(title || '').trim();
@@ -93,6 +95,12 @@ async function writeGuide({ title, product = '', intro = '', steps = [] }) {
 
   let shots = 0;
 
+  /* The same guide as a list rather than as a page, so that whoever asked
+     for it can be shown it without being sent to the Documents page to read
+     what they just asked for. Nothing is written twice: this is filled in as
+     the page is built, screenshot addresses and all. */
+  const written = [];
+
   /* Numbered steps are the things the reader does. A page reporting back —
      a migration running, a set of checks that passed, a completion summary —
      is a section with a heading of its own, which is how the guides this
@@ -101,12 +109,24 @@ async function writeGuide({ title, product = '', intro = '', steps = [] }) {
 
   steps.forEach((step, i) => {
     const heading = richText(step.title || 'Step');
+    const plain = step.section
+      ? String(step.title || 'Step')
+      : `Step ${number + 1}: ${step.title || 'Step'}`;
+
     if (step.section) {
       lines.push(`<h3>${heading}</h3>`);
     } else {
       number += 1;
       lines.push(`<h3>Step ${number}: ${heading}</h3>`);
     }
+
+    const here = {
+      heading: plain,
+      text: String(step.text || ''),
+      bullets: [],
+      images: [],
+    };
+    written.push(here);
 
     if (step.text) lines.push(`<p>${richText(step.text)}</p>`);
 
@@ -117,6 +137,7 @@ async function writeGuide({ title, product = '', intro = '', steps = [] }) {
       lines.push('<ul>');
       bullets.forEach((b) => lines.push(`<li>${richText(b)}</li>`));
       lines.push('</ul>');
+      here.bullets = bullets.map((b) => String(b));
     }
 
     /* One step often spans two screens — the dialog open, then the result —
@@ -137,14 +158,15 @@ async function writeGuide({ title, product = '', intro = '', steps = [] }) {
       shots += 1;
       const file = `image-${shots}${ext}`;
       fs.writeFileSync(path.join(folder, file), picture);
+      const src = `/api/documents/${id}/assets/${file}`;
       lines.push(
-        `<p><img src="/api/documents/${id}/assets/${file}" `
-          + `alt="${escapeHtml(step.title || `Step ${i + 1}`)}" /></p>`
+        `<p><img src="${src}" alt="${escapeHtml(step.title || `Step ${i + 1}`)}" /></p>`
       );
+      here.images.push(src);
     });
   });
 
-  return store.createDocument({
+  const document = await store.createDocument({
     id,
     name,
     description: '',
@@ -158,6 +180,8 @@ async function writeGuide({ title, product = '', intro = '', steps = [] }) {
     mime: 'text/html; charset=utf-8',
     sizeBytes: Buffer.byteLength(lines.join('\n'), 'utf8'),
   });
+
+  return { document, sections: written };
 }
 
 module.exports = { writeGuide, imageExtension, escapeHtml, richText, DOC_ROOT, documentFilePath };

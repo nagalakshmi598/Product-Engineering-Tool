@@ -46,6 +46,26 @@ async function send(question, video, name = 'migration.mp4') {
   const clip = makeRecording(path.join(HERE, 'clip.mp4'));
   record('a test recording was made', clip.length > 1000, `${Math.round(clip.length / 1024)} KB`);
 
+  /* ---- the whole recording is looked at, not the front of it ----
+     Twelve screens over twenty-four seconds, and only four wanted. Stopping
+     ffmpeg at the fourth stops it six seconds in, which on a real migration
+     is a guide that ends before the migration starts; the four have to be
+     spread across the recording instead. */
+  const { framesFrom } = require('../server/video');
+  const few = await framesFrom(clip, 'clip.mp4', { max: 4 });
+  const last = few.frames.length ? few.frames[few.frames.length - 1].at : 0;
+
+  record('only as many screens as were asked for', few.frames.length === 4,
+    `${few.frames.length} screens`);
+  record('the first of them is the opening screen', few.frames[0] && few.frames[0].at <= 1,
+    few.frames[0] ? `at ${few.frames[0].at}s` : '');
+  record('and the last is near the end of the recording', last >= 18,
+    `last screen at ${last}s of 24`);
+  record('spread across it rather than taken off the front',
+    few.frames.every((f, i) => i === 0 || f.at > few.frames[i - 1].at)
+      && new Set(few.frames.map((f) => f.at)).size === few.frames.length,
+    few.frames.map((f) => `${f.at}s`).join(' '));
+
   const env = {
     ...process.env,
     CF_DATA_DIR: path.join(HERE, 'data'),
@@ -130,6 +150,32 @@ async function send(question, video, name = 'migration.mp4') {
     } else {
       record('a screenshot is served', false, 'no image in the guide');
     }
+
+    /* ---- the guide is readable where it was asked for ----
+       Including its screenshots: they are the use of a walkthrough, and
+       having to open the Documents page to see whether any were taken is
+       the thing being fixed. */
+    const page = made.body.writeUp;
+    record('the guide comes back with the reply', Boolean(page && page.title), page ? page.title : 'nothing to render');
+    record('a section per step, in the order written',
+      Boolean(page) && page.sections.length === guide.steps
+        && /^Step 1: /.test(page.sections[0].heading),
+      page ? `${page.sections.length} sections, first "${page.sections[0].heading}"` : '');
+    record('each carrying the screens it was taken from',
+      Boolean(page) && page.sections.some((s) => (s.images || []).length)
+        && page.sections.reduce((n, s) => n + (s.images || []).length, 0) === guide.screenshots,
+      page ? `${page.sections.reduce((n, s) => n + (s.images || []).length, 0)} screenshots` : '');
+    record('addressed where the page serves them',
+      Boolean(page) && page.sections.every((s) => (s.images || [])
+        .every((src) => src.startsWith(`/api/documents/${id}/assets/image-`))),
+      page ? ((page.sections.find((s) => (s.images || []).length) || {}).images || [''])[0] : '');
+
+    /* ---- asked for in the words people use when there is no video ----
+       "Write this up" means the recording when a recording came with it. */
+    const asWriteUp = await send('write this up', clip);
+    record('"write this up" with a recording writes the recording up',
+      Boolean(asWriteUp.body.guide && asWriteUp.body.document),
+      asWriteUp.body.guide ? `${asWriteUp.body.guide.steps} steps` : String(asWriteUp.body.answer).slice(0, 50));
 
     /* ---- the recording is kept too ---- */
     const kept = (made.body.documents || []).find((d) => d.kind === 'video');

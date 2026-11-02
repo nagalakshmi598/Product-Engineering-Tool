@@ -69,18 +69,30 @@ WHAT GOES IN IT
   sentence makes a short write-up; a page of detail makes a long one. Never
   pad a thin description into a thick document.
 
+HOW MUCH DETAIL
+- Write the document, not a summary of it. Someone tests against this, so
+  every case the description gives is written out in full: what the user
+  does, what the tool does in response, what is shown on the screen, what is
+  carried across or stored, and what state things are left in.
+- Where the description gives a sequence, write the sequence — one bullet
+  per thing that happens, in the order it happens.
+- Where it gives a rule, write the rule and the cases it applies to, each on
+  its own bullet, including the ones where it does not apply.
+- Where it gives a refusal, an error or a block, write what triggers it,
+  what is shown, and what the reader can do next.
+- A case with a lot in it becomes two or three sections rather than one
+  section of twenty bullets. Sections are how the document is navigated.
+
 WHAT IS NOT IN IT
-- "open" is the other half of the job, and it is never empty for a feature
-  described in a few sentences. The write-up is read by someone who will
-  test against it, and what it does not say is what stops them: the limit
-  not stated, the case not decided, what happens on the path nobody
-  described, what the error says, what the user can do about it. List those
-  as questions — "What is the maximum number of channels that can be
-  skipped?" — one per entry, three to eight of them. This is the one place
-  you write from what is missing. Everywhere else, silence stays silence.
+- No "Open Points", "Open Questions", "Assumptions", "Notes", "TBD" or any
+  other section about what you were not told. Never ask the reader a
+  question, and never say the description did not cover something. Silence
+  stays silence: what was not described is simply not in the document.
+- Nothing you were not given. Detail means saying everything the
+  description implies, not filling gaps with plausible invention.
 
 Return JSON only, no prose and no code fence:
-{"title":"...","intro":"...","sections":[{"heading":"...","text":"...","bullets":["..."]}],"open":["...?"]}`;
+{"title":"...","intro":"...","sections":[{"heading":"...","text":"...","bullets":["..."]}]}`;
 
 /* ---------------- is a write-up what was asked for ---------------- */
 
@@ -265,10 +277,17 @@ function cleanTitle(title) {
   return name;
 }
 
+/* A heading that is about the description rather than about the feature.
+   The write-up says what the functionality does; what it was not told is
+   not a part of it, and a model that adds the section anyway has it taken
+   back off here rather than only being asked not to. */
+const NOT_ABOUT_THE_FEATURE = /^(?:open\s+(?:points|questions|items|issues)|questions|assumptions?|clarifications?|to\s*be\s*(?:confirmed|decided)|tbd|notes?\s+for\s+(?:review|product|qa))\b/i;
+
 function sectionsFrom(parsed) {
   const raw = parsed && Array.isArray(parsed.sections) ? parsed.sections : [];
 
   return raw
+    .filter((section) => !NOT_ABOUT_THE_FEATURE.test(String((section && (section.heading || section.title)) || '').trim()))
     .map((section) => ({
       heading: String(section.heading || section.title || '').trim(),
       text: String(section.text || '').trim(),
@@ -277,33 +296,6 @@ function sectionsFrom(parsed) {
         .filter(Boolean),
     }))
     .filter((section) => section.heading && (section.text || section.bullets.length));
-}
-
-/**
- * The questions the description left open, as the last section.
- *
- * They are asked for separately rather than left to turn up among the
- * sections, because a model told to add a section about what it was not
- * told will quietly decide it was told enough. Asked for as a list of its
- * own, it answers. The list is what makes the write-up honest: everything
- * above it is what was said, and this is what was not.
- */
-function openPointsFrom(parsed, sections) {
-  const asked = (parsed && Array.isArray(parsed.open) ? parsed.open : [])
-    .map((q) => String(q || '').trim())
-    .filter(Boolean)
-    .filter((q, i, all) => all.indexOf(q) === i)
-    .slice(0, 10);
-
-  if (!asked.length) return null;
-  /* The model put them in itself, which is just as good. */
-  if (sections.some((s) => /open\s+points|open\s+questions/i.test(s.heading))) return null;
-
-  return {
-    heading: 'Open Points',
-    text: 'The description did not settle these, and each one changes what gets tested.',
-    bullets: asked,
-  };
 }
 
 /** The HTML, in the shape the Documents page already renders. */
@@ -349,7 +341,9 @@ async function writeSpec({ question, history = [], product = '' }) {
       '',
       source.slice(0, 12000),
       '',
-      'Write it up.',
+      'Write it up in full: a section for each case it gives, and in each',
+      'section everything the description settles about that case. No section',
+      'about what it did not settle.',
     ].join('\n'),
   });
 
@@ -361,11 +355,6 @@ async function writeSpec({ question, history = [], product = '' }) {
     err.status = 502;
     throw err;
   }
-
-  /* Added after the emptiness check: a write-up that is nothing but the
-     questions it raises is not a write-up. */
-  const open = openPointsFrom(parsed, sections);
-  if (open) sections.push(open);
 
   /* A model that will not name the document does not stop the document
      being written: the first section names it well enough. */

@@ -252,13 +252,19 @@ function screensFrom(clips) {
 }
 
 /** Read one batch of screens into steps, knowing what came before. */
-async function stepsFrom(batch, { offset, done, question }) {
+async function stepsFrom(batch, { offset, done, question, total = 0 }) {
   const already = done.slice(-6).map((s, i) => `${done.length - Math.min(done.length, 6) + i + 1}. ${s.title}`);
 
   const lines = [
     done.length
       ? `Steps already written, which you are continuing from (do not repeat them):\n${already.join('\n')}\n`
       : 'These are the opening screens of the recording.\n',
+    /* Which part of the recording this is. A model shown eight screens with
+       nothing else said reads them as the whole thing and writes a summary;
+       told it is on screens 73 to 80 of 184, it writes the part it has. */
+    total ? `This is part of one recording of ${total} screens. You are being shown part `
+      + `${Math.floor(offset / PER_BATCH) + 1} of ${Math.ceil(total / PER_BATCH)}; `
+      + `${total - offset - batch.length} screens come after it.\n` : '',
     `Screens ${offset + 1} to ${offset + batch.length}, in order:`,
     ...batch.map((s, i) => `  ${i + 1}. at ${clock(s.at)}`),
     '',
@@ -374,7 +380,7 @@ async function writeWalkthrough({ clips, question = '', product = '' }) {
     const batch = screens.slice(i, i + PER_BATCH);
     // one batch at a time, on purpose: each needs to know what the last wrote
     // eslint-disable-next-line no-await-in-loop
-    const written = await stepsFrom(batch, { offset: i, done: steps, question });
+    const written = await stepsFrom(batch, { offset: i, done: steps, question, total: screens.length });
     steps.push(...written);
   }
 
@@ -386,7 +392,7 @@ async function writeWalkthrough({ clips, question = '', product = '' }) {
 
   const { title, intro } = await nameIt(steps, question);
 
-  const document = await writeGuide({
+  const { document, sections } = await writeGuide({
     title,
     product,
     intro,
@@ -400,6 +406,10 @@ async function writeWalkthrough({ clips, question = '', product = '' }) {
     steps: steps.length,
     screens: screens.length,
     used: steps.reduce((n, s) => n + s.screenshots.length, 0),
+
+    /* The guide as it was written, screenshots and all, so it can be read
+       where it was asked for rather than only on the Documents page. */
+    page: { title, intro, sections },
   };
 }
 
