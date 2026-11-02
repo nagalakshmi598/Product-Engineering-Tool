@@ -86,6 +86,11 @@ Dashboard
     rather than taken off the front, so a guide of a long migration still reaches the end of
     it. The guide is shown in the chat too, screenshots and all.
 
+  Scenarios come back a write-up at a time. Attach two documents — In-Scope and Out-of-Scope,
+  say — or name several off the shelf, and you get a set each, named after its own write-up and
+  holding only its own scenarios, with a way into every one of them. Add *in one set* to have
+  them combined instead.
+
 ## Database
 
 The tool stores everything in MongoDB. Put the connection string in `.env` in this folder:

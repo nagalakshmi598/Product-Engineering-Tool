@@ -54,6 +54,19 @@ async function ask(question) {
   return { status: res.status, body: await res.json().catch(() => ({})) };
 }
 
+/** The same ask, with the write-ups handed over rather than named. */
+async function attach(question, names) {
+  const fd = new FormData();
+  fd.append('question', question);
+  fd.append('history', '[]');
+  fd.append('currentProduct', 'datasprawl');
+  names.forEach((name) => {
+    fd.append('files', new Blob([body(name)], { type: 'text/markdown' }), `${name}.md`);
+  });
+  const res = await fetch(`${BASE}/api/assistant`, { method: 'POST', body: fd });
+  return { status: res.status, body: await res.json().catch(() => ({})) };
+}
+
 (async () => {
   fs.rmSync(path.join(HERE, 'psdata'), { recursive: true, force: true });
   fs.rmSync(path.join(HERE, 'psuploads'), { recursive: true, force: true });
@@ -138,6 +151,59 @@ async function ask(question) {
     record('asked for one set, they stay in one',
       Boolean(together.body.draft) && !(together.body.drafts || []).length,
       together.body.draft ? 'one set' : `${(together.body.drafts || []).length} sets`);
+
+    /* ---- handed over rather than named ----
+       In-Scope and Out-of-Scope attached to one message: both were filed and
+       only one was drafted from, with nothing saying the other was dropped. */
+    const PAIR = ['Mail_Gmail-to-Gmail_In-Scope', 'Mail_Gmail-to-Gmail_Out-of-Scope'];
+    const two = await attach('write test scenarios for these documents', PAIR);
+
+    record('two write-ups attached make two sets', (two.body.drafts || []).length === 2,
+      two.body.drafts ? `${two.body.drafts.length} sets`
+        : (two.body.draft ? `ONE set: ${two.body.draft.name}` : 'no drafts at all'));
+    record('both of them were filed', (two.body.documents || []).length === 2,
+      `${(two.body.documents || []).length} filed`);
+    record('each set is named after its own write-up',
+      PAIR.every((n) => (two.body.drafts || []).some((d) => d.name === n)),
+      (two.body.drafts || []).map((d) => d.name).join(' | '));
+    record('and carries only its own scenarios',
+      (two.body.drafts || []).length === 2
+        && two.body.drafts.every((d) => d.scenarios.length
+          && d.scenarios.every((s) => s.scenario.includes(d.name))),
+      (two.body.drafts || []).map((d) => d.scenarios.length).join(' + '));
+    record('the reply names both and their counts',
+      PAIR.every((n) => String(two.body.answer).includes(n)),
+      String(two.body.answer).split('\n')[0]);
+
+    /* ---- more than two, because two is not the number ---- */
+    const THREE = ['Box Sprawl - InScope', 'Box Sprawl - Out of Scope', 'Box Sprawl - Limitations'];
+    const three = await attach('for all these documents write test scenarios', THREE);
+    record('three attached make three sets', (three.body.drafts || []).length === 3,
+      `${(three.body.drafts || []).length} sets`);
+    record('each under the product it was filed in',
+      (three.body.drafts || []).every((d) => d.product === 'datasprawl'),
+      (three.body.drafts || []).map((d) => d.product).join(','));
+
+    /* ---- what must not have changed ---- */
+    const oneFile = await attach('write test scenarios for this document', ['Dropbox Sprawl - InScope']);
+    record('one write-up attached is still one set',
+      Boolean(oneFile.body.draft) && !(oneFile.body.drafts || []).length,
+      oneFile.body.draft ? `one set: ${oneFile.body.draft.name}` : `${(oneFile.body.drafts || []).length} sets`);
+    record('and it is named after the write-up, not the file',
+      Boolean(oneFile.body.draft) && oneFile.body.draft.name === 'Dropbox Sprawl - InScope',
+      oneFile.body.draft ? oneFile.body.draft.name : '');
+
+    const asOne = await attach('write test scenarios for these documents in one set',
+      ['OneDrive Sprawl - InScope', 'OneDrive Sprawl - Out of Scope']);
+    record('asked for them in one set, attached, they stay in one',
+      !(asOne.body.drafts || []).length,
+      (asOne.body.drafts || []).length ? `${asOne.body.drafts.length} sets` : 'one set');
+
+    const justFile = await attach('keep these documents', ['Egnyte Sprawl - Limitations']);
+    record('attaching without asking for scenarios still only files',
+      !justFile.body.draft && !(justFile.body.drafts || []).length
+        && (justFile.body.documents || []).length === 1,
+      justFile.body.draft ? 'drafted anyway' : 'filed and stopped');
   } catch (err) {
     record('threw', false, err.message);
   }

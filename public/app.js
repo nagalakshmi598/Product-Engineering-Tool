@@ -2581,7 +2581,7 @@ async function saveDrafts(drafts) {
   if (done.length) {
     botBubble('bot', 'Their test cases are not written yet — that is several hundred, so open a set '
       + 'and use Actions when you want them.');
-    botOpenLink(done[0].enhancement.id, done[0].enhancement.name);
+    botOpenEach(done.map((r) => ({ id: r.enhancement.id, name: r.enhancement.name })));
   }
 
   await loadProducts();
@@ -2661,6 +2661,35 @@ function botOpenLink(id, name) {
     openEnhancement(id);
   });
   row.appendChild(open);
+
+  el('botLog').appendChild(row);
+  el('botLog').scrollTop = el('botLog').scrollHeight;
+}
+
+/**
+ * A way in to each of several sets filed at once.
+ *
+ * One "Open it" for four sets opens the first and says nothing about the
+ * other three, which is the wrong one three times out of four.
+ */
+function botOpenEach(sets) {
+  if (sets.length === 1) return botOpenLink(sets[0].id, sets[0].name);
+
+  const row = document.createElement('div');
+  row.className = 'bot-actions';
+
+  sets.forEach((set) => {
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'bot-action';
+    open.textContent = set.name.length > 34 ? `${set.name.slice(0, 33)}…` : set.name;
+    open.title = `Open ${set.name}`;
+    open.addEventListener('click', () => {
+      toggleBot(false);
+      openEnhancement(set.id);
+    });
+    row.appendChild(open);
+  });
 
   el('botLog').appendChild(row);
   el('botLog').scrollTop = el('botLog').scrollHeight;

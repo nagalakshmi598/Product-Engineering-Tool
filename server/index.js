@@ -1107,8 +1107,16 @@ function writeUpsAmong(files) {
  * beside it: the second copy of a specification is how a team ends up testing
  * against the wrong one.
  */
+/**
+ * File the write-ups attached to a message.
+ *
+ * @returns {Promise<{documents: Array, byFile: Map<string, object>}>} what was
+ *   filed, and the same thing keyed by the name of the file it came in, so a
+ *   set drafted from an attachment can be given the name it was filed under.
+ */
 async function keepWriteUps(files, { product }) {
   const kept = [];
+  const byFile = new Map();
 
   for (const file of writeUpsAmong(files)) {
     const fileName = decodeFileName(file.originalname);
@@ -1118,15 +1126,19 @@ async function keepWriteUps(files, { product }) {
     if (existing) {
       const ingested = await ingestDocument({ id: existing.id, buffer: file.buffer, originalName: fileName });
       const updated = await store.updateDocument(existing.id, { html: ingested.html });
-      kept.push({ ...store.documentSummary(updated), replaced: true });
+      const summary = { ...store.documentSummary(updated), replaced: true };
+      kept.push(summary);
+      byFile.set(file.originalname, summary);
       continue;
     }
 
     const doc = await storeDocument({ name: tidyName(name), description: '', product: product || '', file });
-    kept.push({ ...store.documentSummary(doc), replaced: false });
+    const summary = { ...store.documentSummary(doc), replaced: false };
+    kept.push(summary);
+    byFile.set(file.originalname, summary);
   }
 
-  return kept;
+  return { documents: kept, byFile };
 }
 
 const chatUpload = multer({
@@ -1272,7 +1284,7 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
 
   /* Filed before the answer is composed, so the write-up is in the context
      the scenarios are drafted from. */
-  const filed = await keepWriteUps(req.files, {
+  const { documents: filed, byFile: filedByFile } = await keepWriteUps(req.files, {
     product: guessProduct(String(question || ''), (open && open.product) || currentProduct),
   });
 
@@ -1411,6 +1423,16 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
     result.draft.name = written.name;
     if (written.product) result.draft.product = written.product;
   }
+
+  /* The same, a set at a time, when several write-ups came in one message:
+     each set is named after the write-up it was drafted from rather than
+     after the file that carried it. */
+  (result.drafts || []).forEach((draft) => {
+    const from = filedByFile.get(draft.feature);
+    if (!from || draft.enhancementId) return;
+    draft.name = from.name;
+    if (from.product) draft.product = from.product;
+  });
 
   res.json({
     ...result,

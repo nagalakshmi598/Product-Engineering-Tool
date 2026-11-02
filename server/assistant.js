@@ -1941,6 +1941,21 @@ async function askAssistant({
     ? attachedWriteUps[0]
     : null;
 
+  /* Two write-ups handed over at once are two features, and two sets.
+   *
+   * In-Scope and Out-of-Scope for the same migration, attached together with
+   * "write test scenarios for these": only one of them used to come back,
+   * because more than one attachment fell through to the general path, where
+   * the model is given both write-ups as context and drafts from whichever
+   * it settles on. Nothing said the other one was dropped.
+   *
+   * So each attached write-up gets its own set, named after itself, the way
+   * naming several off the shelf already does. Asked for them in one set,
+   * they still go in one. */
+  const theAttachedOnes = drafting && !wantsThemTogether(text) && attachedWriteUps.length > 1
+    ? attachedWriteUps
+    : null;
+
   const justTheOne = theAttachedOne || (!files.length && !perWriteUp && drafting
     ? (theNamedOne || theOpenOne)
     : null);
@@ -1976,6 +1991,49 @@ async function askAssistant({
     }
     /* Nothing came back from it — fall through and answer the ordinary way
        rather than saying no. */
+  }
+
+  if (theAttachedOnes) {
+    const perDoc = await draftPerWriteUp(theAttachedOnes, {
+      provider, model, history: trimmed, system: SYSTEM_DRAFT, question: text, prefixSections: false,
+    });
+
+    if (perDoc.sets.length) {
+      /* The set is named after the write-up, not after the file it arrived
+         in: "Mail_Gmail-to-Gmail_In-Scope", not that with ".docx" on it. */
+      const titleOf = (name) => String(name || '').replace(/\.[a-z0-9]{1,5}$/i, '').trim() || String(name || '');
+      const product = openEnhancement ? openEnhancement.product : guessProduct(text, currentProduct);
+
+      const lines = [
+        `${plural(perDoc.total, 'scenario')} across ${plural(perDoc.sets.length, 'write-up')}, `
+          + 'a set each:',
+        '',
+        ...perDoc.sets.map((s) => `  ${titleOf(s.name)} — ${plural(s.scenarios.length, 'scenario')}`),
+      ];
+
+      if (perDoc.refused.length) {
+        lines.push('', `Nothing came back for: ${perDoc.refused.map(titleOf).join(', ')}. `
+          + 'Ask for those on their own.');
+      }
+      lines.push('', 'Say "in one set" if you want them together instead.');
+
+      return {
+        answer: lines.join('\n'),
+        model,
+        provider,
+        drafts: perDoc.sets.map((set) => ({
+          /* The file it came in, so the set can be matched back to the
+             write-up that was filed from it and take that name. */
+          feature: set.name,
+          name: titleOf(set.name),
+          product,
+          enhancementId: null,
+          scenarios: set.scenarios,
+          save: wantsSaved(text),
+        })),
+      };
+    }
+    /* Nothing came back for any of them — answer the ordinary way. */
   }
 
   if (perWriteUp) {
