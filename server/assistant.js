@@ -35,6 +35,14 @@ const DOC_EXCERPT = 14000;
 const DOC_BUDGET = 90000;
 const SCENARIO_CAP = 400;
 
+/* One write-up, read on its own, with nothing else in the turn.
+ *
+ * DOC_EXCERPT is a share of a context holding the whole tool; drafting a set
+ * from a single write-up carries nothing but that write-up, so it is given
+ * whole. Cutting it at fourteen thousand characters means the last pages of
+ * a long one are never tested, and nothing says so. */
+const DOC_WHOLE = 40000;
+
 /** Open-ended questions need the model; the rest of the assistant still works. */
 const UNAVAILABLE = (reason) => `${reason}, so I cannot answer open-ended questions right now.
 
@@ -335,7 +343,9 @@ async function callAnthropic({ model, context, question, history, system = SYSTE
 
   const message = await client.messages.create({
     model,
-    max_tokens: 2400,
+    /* Room for a set that covers a long write-up statement by statement.
+       It is a ceiling, not a target: a short answer still stops short. */
+    max_tokens: 8000,
     system: `${system}\n\n=== CONTEXT ===\n${context}`,
     messages: [...history, anthropicTurn(question, images)],
   });
@@ -1758,6 +1768,20 @@ async function draftPerWriteUp(documents, { provider, model, history, system, qu
   const refused = [];
   let total = 0;
 
+  /* The house rules, with the two that work against covering one write-up
+     lifted: a scenario count, which decides the length before the write-up
+     has been read, and the licence to write a line about what the write-up
+     does not say, which is how a set fills up with lines that belong to no
+     document in particular. */
+  const perDocument = `${system}
+
+READING ONE WRITE-UP
+The turn below gives you a single write-up and nothing else. For it:
+- The count above does not apply. The write-up sets the length: as many
+  scenarios as it has statements to test, and no padding beyond them.
+- Do not write a line marked "(not stated in the write-up)". What it does
+  not state is not tested here.`;
+
   for (const doc of documents) {
     /* A write-up off the shelf is stored as HTML; one still attached to the
        message is plain text already. Either is the same thing to read. */
@@ -1766,9 +1790,38 @@ async function draftPerWriteUp(documents, { provider, model, history, system, qu
       `Write test scenarios for the feature specified in this write-up.`,
       '',
       `=== "${doc.name}" ===`,
-      text.slice(0, DOC_EXCERPT),
+      text.slice(0, DOC_WHOLE),
       '',
-      'Draft from what it states — its field names, its limits, its messages.',
+      /* Cover all of it.
+       *
+       * A round number of scenarios off a write-up that states forty things
+       * leaves most of them untested, and nothing says which ones. The
+       * write-up decides the length: a statement in it is a line in the set. */
+      'COVER ALL OF IT. Work down the write-up in the order it is written and',
+      'take every statement in turn — every behaviour, rule, limit, field,',
+      'label, message, status, path, mapping and exclusion it states. Each one',
+      'gets at least one scenario of its own, and the ones that can go wrong',
+      'get a negative and an edge case as well. There is no target number: the',
+      'write-up decides how many. A statement nobody wrote a line for is the',
+      'one that ships untested.',
+      '',
+      /* And only from it. A per-write-up set used to come back with lines
+         that could have been written about any migration — and worse, lines
+         belonging to the other write-up attached beside it. */
+      'WRITE ONLY FROM IT. Every line must come from something this write-up',
+      'says, in its own field names, its own limits, its own messages. Nothing',
+      'from another write-up, nothing from what migrations usually do. If this',
+      'write-up does not state it, leave it out — do not write a line marked',
+      'as not stated. A line that could have been written without reading this',
+      'write-up does not belong in the set.',
+      '',
+      /* An out-of-scope write-up is a list of behaviours to verify the
+         absence of, not a list of things to say nothing about. */
+      'WHAT IT RULES OUT IS TESTED TOO. Where it states that something is out',
+      'of scope, not supported, skipped or not migrated, write the scenario',
+      'that verifies it does not happen, and that what is in scope is',
+      'unaffected by its absence.',
+      '',
       'Write about the feature it specifies, never about the write-up itself:',
       'not uploading it, not opening it, not what the Documents page does with it.',
       prefixSections ? `Begin each section name with "${doc.name} — ".` : '',
@@ -1776,8 +1829,8 @@ async function draftPerWriteUp(documents, { provider, model, history, system, qu
 
     try {
       const answer = provider === 'openai'
-        ? await callOpenAi({ model, context: '', question: ask, history, system, images: [] })
-        : await callAnthropic({ model, context: '', question: ask, history, system, images: [] });
+        ? await callOpenAi({ model, context: '', question: ask, history, system: perDocument, images: [] })
+        : await callAnthropic({ model, context: '', question: ask, history, system: perDocument, images: [] });
 
       const rows = parseDraft(String(answer || ''));
       if (!rows.length) { refused.push(doc.name); continue; }

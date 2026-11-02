@@ -91,6 +91,12 @@ Dashboard
   holding only its own scenarios, with a way into every one of them. Add *in one set* to have
   them combined instead.
 
+  Each set is drafted from its write-up alone and is read statement by statement: every
+  behaviour, rule, limit, field, message and exclusion it states gets a scenario, and what it
+  rules out is tested as well — that a thing listed as out of scope does not happen, and that
+  what is in scope is unaffected by its absence. The write-up sets the length; there is no
+  target count, and nothing is written that the write-up does not say.
+
 ## Database
 
 The tool stores everything in MongoDB. Put the connection string in `.env` in this folder:

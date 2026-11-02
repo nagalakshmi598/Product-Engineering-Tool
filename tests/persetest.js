@@ -199,6 +199,23 @@ async function attach(question, names) {
       !(asOne.body.drafts || []).length,
       (asOne.body.drafts || []).length ? `${asOne.body.drafts.length} sets` : 'one set');
 
+    /* ---- what each set is asked for ----
+       A set is drafted from one write-up on its own, and the turn that does
+       it has to ask for the whole of that write-up and for nothing else. The
+       stub reports the briefing back as scenarios, so a brief that quietly
+       stops asking shows up here rather than as a thinner set nobody counts. */
+    const brief = (two.body.drafts || [])[0] || { scenarios: [] };
+    const briefed = brief.scenarios.map((s) => s.scenario).join(' | ');
+
+    record('each write-up is asked for statement by statement',
+      /read statement by statement/.test(briefed), briefed.slice(-120));
+    record('and from nothing but itself',
+      /drafted from nothing else/.test(briefed), '');
+    record('what it rules out is asked for too',
+      /rules out is tested too/.test(briefed), '');
+    record('and no scenario count decides the length first',
+      /briefed without a scenario count/.test(briefed), '');
+
     const justFile = await attach('keep these documents', ['Egnyte Sprawl - Limitations']);
     record('attaching without asking for scenarios still only files',
       !justFile.body.draft && !(justFile.body.drafts || []).length
