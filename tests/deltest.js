@@ -213,6 +213,63 @@ const sets = async () => (await (await fetch(`${BASE}/api/products/datasprawl/en
       !(await sets()).some((s) => s.name === 'Egnyte - Content Sprawl Scope')
         && (await docs()).length === before,
       gone.body.done || gone.body.error);
+
+    /* ---- renaming a set, said while looking at one ----
+       "Rename the name as X" used to always be a write-up, so the set on the
+       screen kept its name and a write-up called something similar lost
+       its own. */
+    const alike = await upload('Gmail to Gmail scenarios');
+    const mine = await (await fetch(`${BASE}/api/assistant/scenarios`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        product: 'datasprawl',
+        name: 'Mail_Gmail-to-Gmail_In-Scope_Scenarios',
+        scenarios: [{ scenario: 'Verify that mapped events are migrated.', type: 'Positive', section: 'Scan' }],
+      }),
+    })).json();
+
+    const bySet = await ask('rename the scenarios title as Outlook_Shared_Mailboxes_to_Google_Groups',
+      { enhancementId: mine.enhancement.id });
+    record('"rename the scenarios title" is a set being renamed',
+      bySet.body.command && bySet.body.command.kind === 'rename-set',
+      bySet.body.command ? bySet.body.command.kind : String(bySet.body.answer).slice(0, 50));
+    record('and it is the set on the screen, not the write-up beside it',
+      bySet.body.target && bySet.body.target.id === mine.enhancement.id,
+      bySet.body.target ? bySet.body.target.name : 'nothing found');
+
+    const didSet = await run(bySet.body.command, bySet.body.target);
+    record('the set is renamed',
+      (await sets()).some((s) => s.name === 'Outlook_Shared_Mailboxes_to_Google_Groups'),
+      didSet.body.done || didSet.body.error);
+    record('and the write-up of a similar name is untouched',
+      (await docs()).some((d) => d.name === 'Gmail to Gmail scenarios'),
+      (await docs()).map((d) => d.name).join(', '));
+
+    /* ---- and with no noun at all, the thing being read is the thing ---- */
+    const nounless = await ask('rename the name as Gmail in-scope checks',
+      { enhancementId: mine.enhancement.id });
+    record('"rename the name as X" with a set open renames the set',
+      nounless.body.command && nounless.body.command.kind === 'rename-set'
+        && nounless.body.target && nounless.body.target.id === mine.enhancement.id,
+      nounless.body.command
+        ? `${nounless.body.command.kind} on ${nounless.body.target ? nounless.body.target.name : 'nothing'}`
+        : String(nounless.body.answer).slice(0, 50));
+
+    const stillADoc = await ask('rename the name as Gmail write-up', { documentId: alike.document.id });
+    record('and with a write-up open it still renames the write-up',
+      stillADoc.body.command && stillADoc.body.command.kind === 'rename-document'
+        && stillADoc.body.target && stillADoc.body.target.id === alike.document.id,
+      stillADoc.body.command ? stillADoc.body.command.kind : String(stillADoc.body.answer).slice(0, 50));
+
+    /* ---- neither open: it asks, and offers both kinds ---- */
+    const neither = await ask('rename the name as Something else');
+    record('with neither open it asks which',
+      !neither.body.target && (neither.body.choices || []).length > 0,
+      neither.body.target ? 'picked one anyway' : String(neither.body.answer).slice(0, 46));
+    record('and offers sets as well as write-ups',
+      (neither.body.choices || []).some((c) => c.kind === 'set')
+        && (neither.body.choices || []).some((c) => c.kind === 'document'),
+      [...new Set((neither.body.choices || []).map((c) => c.kind))].join(', ') || 'none');
   } catch (err) {
     record('threw', false, err.message);
   }

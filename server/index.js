@@ -849,6 +849,27 @@ async function nearbySets(command, product) {
     .map(({ row }) => (aboutDocument ? store.documentSummary(row) : store.summary(row)));
 }
 
+/**
+ * The things an instruction might have meant, both kinds where its words
+ * said neither.
+ *
+ * "Rename the name as X" rules out nothing, so a set of scenarios and a
+ * write-up are equally what it is about. Each row is labelled with what it
+ * is, because two of them may be called almost the same thing — a write-up
+ * named "Gmail to Gmail scenarios" and the set drafted from it.
+ */
+async function bothKindsIfUnsettled(command, product) {
+  if (!command.nounless) return nearbySets(command, product);
+
+  const sets = await nearbySets({ ...command, object: null }, product);
+  const docs = await nearbySets({ ...command, object: 'document' }, product);
+
+  return [
+    ...sets.map((row) => ({ ...row, kind: 'set', label: `${row.name} — set of scenarios` })),
+    ...docs.map((row) => ({ ...row, kind: 'document', label: `${row.name} — write-up` })),
+  ];
+}
+
 app.post('/api/assistant/command', wrap(async (req, res) => {
   const { command, enhancementId, documentId } = req.body || {};
   if (!command || !command.kind) return res.status(400).json({ error: 'No change was asked for.' });
@@ -1182,6 +1203,16 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
       command = { ...command, kind: 'delete-document', object: 'document', name: null };
     }
 
+    /* "Rename the name as X" says what to call the thing and never says what
+       the thing is. It used to always be a write-up, so a set of scenarios
+       was left alone while a write-up of a similar name was renamed in its
+       place. The thing being read is what it is — and with neither a set nor
+       a write-up open, the screenshot below decides, across both, because
+       the sentence ruled out neither. */
+    if (command.nounless && !currentDocument && open) {
+      command = { ...command, kind: 'rename-set', object: null, name: null };
+    }
+
     let target = await targetOf(command, open ? open.id : null, currentDocument);
     let becauseOfThePicture = '';
 
@@ -1190,17 +1221,31 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
        The picture is read against what it could be. It may come back with
        nothing, which is the same as before: it asks. */
     if (!target && (req.files || []).length) {
-      const near = await nearbySets(command, currentProduct);
+      const near = await bothKindsIfUnsettled(command, currentProduct);
       const pictures = picturesIn(await attachments.readAll(req.files));
       const shown = await whichOneIsShown({
         pictures,
         candidates: near,
         question,
-        noun: command.object === 'document' ? 'write-up' : 'set',
+        noun: command.nounless ? 'thing' : (command.object === 'document' ? 'write-up' : 'set'),
       });
 
       if (shown) {
-        target = command.object === 'document'
+        /* The picture settled which kind of thing as well as which one, so
+           the instruction follows it: the set marked in a screenshot of a
+           product page is renamed, not a write-up with a similar name. */
+        const picked = near.find((row) => row.id === shown.id);
+        const asDocument = command.nounless
+          ? Boolean(picked && picked.kind === 'document')
+          : command.object === 'document';
+
+        if (command.nounless) {
+          command = asDocument
+            ? { ...command, kind: 'rename-document', object: 'document' }
+            : { ...command, kind: 'rename-set', object: null };
+        }
+
+        target = asDocument
           ? await store.getDocument(shown.id)
           : await store.getEnhancement(shown.id);
         if (target) {
@@ -1212,12 +1257,15 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
     }
 
     if (!target) {
-      const near = await nearbySets(command, currentProduct);
+      const near = await bothKindsIfUnsettled(command, currentProduct);
 
       /* Asked about a write-up, the choices offered are write-ups. Offering
          sets of scenarios instead is how "delete this document" ends up
-         deleting forty-three scenarios. */
-      const thing = command.object === 'document' ? 'write-up' : 'set';
+         deleting forty-three scenarios. Where the words said neither, both
+         are offered and the one picked says which it was. */
+      const thing = command.nounless
+        ? 'set or write-up'
+        : (command.object === 'document' ? 'write-up' : 'set');
 
       return res.json({
         answer: near.length
@@ -1232,7 +1280,9 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
           name: e.name,
           product: e.product,
           scenarioCount: e.scenarioCount,
-          kind: command.object === 'document' ? 'document' : 'set',
+          kind: command.nounless
+            ? e.kind
+            : (command.object === 'document' ? 'document' : 'set'),
         })),
         model: 'built-in',
         provider: 'local',

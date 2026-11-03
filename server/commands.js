@@ -115,7 +115,44 @@ const A_COLUMN = 'section|type|status|s\\.?\\s*no|serial|source';
 const A_RENAME = '(?:rename|re-?name|edit|change|update|correct|fix|set|call)';
 const NAMED = '["\'“]?(.+?)["\'”]?';
 
+/* The words for a set of scenarios, the way a write-up has its own. Saying
+   one of them settles what is being renamed, exactly as saying "document"
+   does: "rename the scenarios title as X" is the set on the screen, not a
+   write-up that happens to be called something similar. */
+const A_SET = '(?:test\\s+)?(?:scenarios?|sets?|enhancements?)';
+const A_SET_TITLED = `(?:${A_SET}|test\\s*cases?|lists?)`;
+
+/* And plural only where no word follows to say which thing is meant, so that
+   "edit the scenario to read ..." stays an edit of a scenario. */
+const SOME_SCENARIOS = '(?:test\\s+)?(?:scenarios|sets?|enhancements?)';
+
 const PATTERNS = [
+  /* rename the scenarios title to Outlook_Shared_Mailboxes_to_Google_Groups
+     — before the write-up renames below, which would otherwise take it: a
+     set of scenarios was being left alone while a write-up of a similar
+     name was renamed in its place, and the reply said so in a sentence
+     nobody reads twice. */
+  {
+    kind: 'rename-set',
+    re: new RegExp(
+      `\\b${A_RENAME}\\s+(?:the\\s+|that\\s+|this\\s+|its\\s+)?`
+        + `(?:${A_SET_TITLED}\\s+){1,2}(?:name|title)\\s+(?:to|as|into)\\s+${NAMED}\\s*$`,
+      'i'
+    ),
+    read: (m) => ({ name: null, to: tidyName(m[1]) }),
+  },
+
+  /* rename the scenarios to Outlook Shared Mailboxes */
+  {
+    kind: 'rename-set',
+    re: new RegExp(
+      `\\b${A_RENAME}\\s+(?:the\\s+|that\\s+|this\\s+|these\\s+)?`
+        + `${SOME_SCENARIOS}\\s+(?:to|as|into)\\s+${NAMED}\\s*$`,
+      'i'
+    ),
+    read: (m) => ({ name: null, to: tidyName(m[1]) }),
+  },
+
   /* delete the Outlook Shared Mailboxes document */
   {
     kind: 'delete-document',
@@ -155,15 +192,20 @@ const PATTERNS = [
 
   /* edit that name as Confluence-to-SharePoint-Migration-Walkthrough —
      nothing names which write-up, so it is the one open or the one in the
-     screenshot, and failing both it asks which */
+     screenshot, and failing both it asks which.
+
+     With the word "document" in it, that is settled. Without it — "rename
+     the name as ..." — the sentence says what to call the thing and never
+     says what the thing is, so it is marked as unsettled here and decided
+     from what is on the screen rather than always being a write-up. */
   {
     kind: 'rename-document',
     re: new RegExp(
       `\\b${A_RENAME}\\s+(?:the\\s+|that\\s+|this\\s+|its\\s+)?`
-        + `(?:${A_DOCUMENT}\\s+)?(?:name|title)\\s+(?:to|as|into)\\s+${NAMED}\\s*$`,
+        + `(?:(${A_DOCUMENT})\\s+)?(?:name|title)\\s+(?:to|as|into)\\s+${NAMED}\\s*$`,
       'i'
     ),
-    read: (m) => ({ name: null, to: tidyLabel(m[1]), object: 'document' }),
+    read: (m) => ({ name: null, to: tidyLabel(m[2]), object: 'document', nounless: !m[1] }),
   },
 
   /* rename this document to Egnyte sprawl */
@@ -356,6 +398,18 @@ function parseCommand(question) {
     if (read.snos && !read.snos.length) continue;
     if (pattern.kind === 'delete-set' && !read.open && (!read.name || read.name.length < 3)) continue;
     if (pattern.kind === 'rename-set' && !read.to) continue;
+
+    /* "Set the scenarios to pass" is a status, not a new name for the set.
+       A_RENAME covers "set", "change" and "update", which are the words for
+       both, so what follows "to" decides. */
+    if (pattern.kind === 'rename-set' && STATUS_WORDS[String(read.to).toLowerCase()]) continue;
+
+    /* The word decides, the other way round as well: an instruction that
+       says scenarios is not a write-up being renamed, whatever a write-up
+       on the shelf happens to be called. */
+    if (pattern.kind === 'rename-document' && MENTIONS_SCENARIOS.test(instruction)
+      && !MENTIONS_A_DOCUMENT.test(instruction)) continue;
+
     if (pattern.kind === 'edit-scenario' && !read.text) continue;
 
     /* A write-up has to be named to be renamed or moved: there is no "the
@@ -437,7 +491,10 @@ function describeCommand(command, context = {}) {
     case 'clear-column':
       return `Empty the ${command.column} column${where}, on every row. This cannot be undone.`;
     case 'rename-set':
-      return `Rename "${command.name || context.enhancementName}" to "${command.to}".`;
+      /* Named as a set, because a write-up of nearly the same name is often
+         sitting beside it and this is the sentence that says which was
+         understood. */
+      return `Rename the set "${command.name || context.enhancementName}" to "${command.to}".`;
     case 'delete-set':
       return `Delete "${command.name || context.enhancementName}" and every scenario in it. This cannot be undone.`;
     default:

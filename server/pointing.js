@@ -81,7 +81,10 @@ async function whichOneIsShown({ pictures, candidates, question = '', noun = 'wr
     `The user said: "${String(question).slice(0, 300)}"`,
     '',
     `The ${noun}s they could have meant:`,
-    ...list.map((row, i) => `${i + 1}. ${row.name}`),
+    /* Labelled where the list holds more than one kind of thing: a write-up
+       and the set drafted from it are often called nearly the same, and the
+       picture is of one of them, not the other. */
+    ...list.map((row, i) => `${i + 1}. ${row.label || row.name}`),
     '',
     `Which one is the screenshot pointing at?`,
   ].join('\n');

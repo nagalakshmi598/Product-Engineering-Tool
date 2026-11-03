@@ -2388,12 +2388,23 @@ function offerChoices(command, choices) {
     const pick = document.createElement('button');
     pick.type = 'button';
     pick.className = 'bot-action';
-    pick.textContent = `${choice.name} (${plural(choice.scenarioCount, 'scenario')})`;
+    pick.textContent = choice.kind === 'document'
+      ? `${choice.name} (write-up)`
+      : `${choice.name} (${plural(choice.scenarioCount || 0, 'scenario')})`;
     pick.title = `${productLabel(choice.product)} — ${choice.name}`;
 
     pick.addEventListener('click', () => {
       row.remove();
-      const aimed = { ...command, name: choice.name };
+      /* Where the words said neither a set nor a write-up, the one picked
+         says which, and the instruction follows it. */
+      const aimed = command.nounless
+        ? {
+          ...command,
+          name: choice.name,
+          kind: choice.kind === 'document' ? 'rename-document' : 'rename-set',
+          object: choice.kind === 'document' ? 'document' : null,
+        }
+        : { ...command, name: choice.name };
       botBubble('bot', describeChosen(aimed, choice));
       if (command.confirm) askToConfirm(aimed, choice);
       else runCommand(aimed, choice);
@@ -2408,7 +2419,7 @@ function offerChoices(command, choices) {
   none.textContent = 'None of these';
   none.addEventListener('click', () => {
     row.remove();
-    botBubble('bot', aboutDocuments
+    botBubble('bot', choices.every((c) => c.kind === 'document')
       ? 'Left as it is. Open the write-up you mean, and ask again.'
       : 'Left as it is. Open the set you mean, and ask again.');
   });

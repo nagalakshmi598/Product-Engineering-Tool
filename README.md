@@ -116,6 +116,15 @@ Dashboard
   reason* — do not turn the request into a question. If a draft comes back as prose rather than
   as a list, it is asked for again as a list rather than lost.
 
+  Renaming says what kind of thing it is about. *Rename the scenarios title as X*, *change the
+  enhancement name to X* and *rename the scenarios to X* rename the set; *rename the document
+  name to X* renames the write-up. Saying neither — *rename the name as X* — leaves it to what
+  is on the screen: the set you are reading, the write-up you are reading, or, with a
+  screenshot attached, whichever of the two it shows. With nothing open it asks, and offers
+  both sets and write-ups rather than guessing. The sentence it puts to you first says which
+  it understood, because a set and the write-up it was drafted from are often called almost
+  the same thing.
+
   Ask for a number — *write 50+ scenarios*, *at least 30 test cases* — and you get that number.
   Models stop early on a long list however firmly the count is put to them, so the set is
   counted when it comes back and the shortfall asked for again, round by round, until it is

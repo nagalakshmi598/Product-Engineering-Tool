@@ -61,6 +61,24 @@ const SENTENCES = [
   ['change scenario 12 to: Verify that the banner is shown', 'edit-scenario',
     (c) => c.sno === 12 && /banner/.test(c.text)],
   ['rename this to Workspace checks', 'rename-set', (c) => c.to === 'Workspace checks'],
+
+  /* the word for a set of scenarios settles it, the way "document" does the
+     other way: a set was being left alone while a write-up of a similar name
+     was renamed in its place */
+  ['rename the scenarios title as Outlook_Shared_Mailboxes_to_Google_Groups_Migration',
+    'rename-set', (c) => c.to === 'Outlook_Shared_Mailboxes_to_Google_Groups_Migration'],
+  ['rename the scenario set name as Outlook Shared Mailboxes', 'rename-set',
+    (c) => c.to === 'Outlook Shared Mailboxes'],
+  ['change the enhancement name to Gmail checks', 'rename-set', (c) => c.to === 'Gmail checks'],
+  ['edit the test scenarios title to Mail checks', 'rename-set', (c) => c.to === 'Mail checks'],
+  ['rename the scenarios to Outlook Shared Mailboxes', 'rename-set',
+    (c) => c.to === 'Outlook Shared Mailboxes'],
+  ['rename the set title as Gmail in-scope', 'rename-set', (c) => c.to === 'Gmail in-scope'],
+
+  /* and saying neither leaves it to be settled by what is on the screen */
+  ['rename the name as Outlook_Shared_Mailboxes_to_Google_Groups_Migration.', 'rename-document',
+    (c) => c.nounless === true && c.to === 'Outlook_Shared_Mailboxes_to_Google_Groups_Migration'],
+  ['edit the document name to Egnyte sprawl v2', 'rename-document', (c) => !c.nounless],
   ['remove that section', 'clear-column', (c) => /section/i.test(c.column)],
   ['remove the type column', 'clear-column'],
 
@@ -87,6 +105,11 @@ const SENTENCES = [
   ['write test scenarios for data sprawl', null],
   ['write scenarios from the Egnyte document', null],
   ['which enhancements have no test cases yet?', null],
+
+  /* "set" and "change" are words for both renaming and marking, so what
+     follows decides: a status is not a new name for the set */
+  ['set the scenarios to pass', null],
+  ['change the scenarios to passed', null],
 ];
 
 SENTENCES.forEach(([said, kind, alsoTrue]) => {
@@ -111,6 +134,10 @@ const SAYS = [
   ['remove that section', /Empty the section column in "Open Set", on every row\./],
   ['regenerate test cases', /Write the test cases again for every scenario in "Open Set", replacing/],
   ['generate test cases', /Write test cases for the scenarios in "Open Set" that have none yet\./],
+  /* said as a set, so a write-up of nearly the same name sitting beside it
+     cannot be mistaken for what was understood */
+  ['rename the scenarios title as Gmail in-scope',
+    /Rename the set "Open Set" to "Gmail in-scope"\./],
 ];
 
 SAYS.forEach(([said, shape]) => {

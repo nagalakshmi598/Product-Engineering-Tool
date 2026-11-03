@@ -128,6 +128,31 @@ const docs = async () => (await (await fetch(`${BASE}/api/documents`)).json()).d
       offered.some((n) => OTHER_DOCS.includes(n)) ? 'other products crept in' : 'none from elsewhere');
     record('each marked as a write-up', offered.length > 0 && blind.body.choices.every((c) => c.kind === 'document'), '');
 
+    /* ---- pointing at a set, with a sentence that says neither ----
+       "Rename the name as X" was always a write-up, so a set marked in the
+       screenshot kept its name and a write-up beside it lost its own. */
+    await fetch(`${BASE}/api/assistant/scenarios`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        product: 'datasprawl',
+        name: 'Dropbox - Content Sprawl Scope',
+        scenarios: [{ scenario: 'Verify that stale items are counted.', type: 'Positive', section: 'Scan' }],
+      }),
+    });
+
+    const pointed = await ask('rename the name as Dropbox sprawl v2', { product: 'datasprawl', shot });
+    record('a nounless rename reads the screenshot against both kinds',
+      Boolean(pointed.body.target), pointed.body.target
+        ? pointed.body.target.name : String(pointed.body.answer).slice(0, 48));
+    record('and the kind follows what the picture showed',
+      pointed.body.command && pointed.body.command.kind === 'rename-set',
+      pointed.body.command ? pointed.body.command.kind : 'not a command');
+    record('the set it names is the one that exists',
+      Boolean(pointed.body.target)
+        && (await (await fetch(`${BASE}/api/products/datasprawl/enhancements`)).json())
+          .enhancements.some((s) => s.id === pointed.body.target.id),
+      pointed.body.target ? pointed.body.target.id : 'nothing');
+
     /* ---- the build stamp, so the page knows it is behind ---- */
     const res = await fetch(`${BASE}/api/products`);
     record('every reply says which build served it',

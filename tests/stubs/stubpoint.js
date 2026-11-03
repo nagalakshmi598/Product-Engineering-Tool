@@ -22,8 +22,16 @@ class FakeOpenAI {
           if (!/^data:image\/png;base64,/.test(images[0].image_url.url)) {
             throw new Error('the screenshot was not sent as a picture');
           }
-          if (!/write-ups they could have meant/i.test(text)) {
+          if (!/(?:write-up|set|thing)s they could have meant/i.test(text)) {
             throw new Error('the candidates were not listed');
+          }
+
+          /* Where the instruction said neither a set nor a write-up, both
+             are on the list — and the list has to say which is which, or
+             the two of them read as the same thing twice. */
+          if (/things they could have meant/i.test(text)
+            && !(/— set of scenarios/.test(text) && /— write-up/.test(text))) {
+            throw new Error('a mixed list did not say which was which');
           }
 
           /* Pick whichever line mentions Dropbox, the way a reader would
