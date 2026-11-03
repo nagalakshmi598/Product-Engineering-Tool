@@ -173,9 +173,12 @@ async function contentsOf(id) {
       Boolean(page) && !page.sections.some((s) => /open\s+(?:points|questions)/i.test(s.heading)),
       page ? page.sections.map((s) => s.heading).join(' · ').slice(0, 56) : '');
 
-    record('and it offers scenarios rather than writing them',
-      !made.body.draft && !made.body.drafts && /test scenarios/i.test(String(made.body.answer)),
-      made.body.draft ? 'drafted scenarios nobody asked for' : 'offered');
+    /* A document was asked for and a document is what happens. No scenarios
+       are drafted, and none are offered off the end of the sentence either:
+       the two are separate jobs and this one is finished. */
+    record('it writes no scenarios and does not raise them',
+      !made.body.draft && !made.body.drafts && !/test scenarios|test cases/i.test(String(made.body.answer)),
+      made.body.draft ? 'drafted scenarios nobody asked for' : String(made.body.answer).slice(-46));
 
     /* ---- described first, asked for after ---- */
     const after = await ask('create document and upload it', {

@@ -186,8 +186,14 @@ async function attach(question, names) {
     record('two write-ups attached make two sets', (two.body.drafts || []).length === 2,
       two.body.drafts ? `${two.body.drafts.length} sets`
         : (two.body.draft ? `ONE set: ${two.body.draft.name}` : 'no drafts at all'));
-    record('both of them were filed', (two.body.documents || []).length === 2,
+    /* Scenarios were asked for, so scenarios are what happens. The two
+       write-ups are read to draft from and left off the Documents page. */
+    record('neither of them is filed, because that was not asked for',
+      !(two.body.documents || []).length,
       `${(two.body.documents || []).length} filed`);
+    record('and the reply says the attachment was only read',
+      /read, not filed/i.test(String(two.body.answer)),
+      String(two.body.answer).split('\n').slice(-1)[0].slice(0, 54));
     record('each set is named after its own write-up',
       PAIR.every((n) => (two.body.drafts || []).some((d) => d.name === n)),
       (two.body.drafts || []).map((d) => d.name).join(' | '));
@@ -279,6 +285,17 @@ async function attach(question, names) {
       !justFile.body.draft && !(justFile.body.drafts || []).length
         && (justFile.body.documents || []).length === 1,
       justFile.body.draft ? 'drafted anyway' : 'filed and stopped');
+
+    /* ---- and asking for both in one breath still does both ---- */
+    const bothJobs = await attach('upload this document and write test scenarios for it',
+      ['Notion Sprawl - InScope']);
+    record('asking for both still files and drafts',
+      Boolean(bothJobs.body.draft) && (bothJobs.body.documents || []).length === 1,
+      `${(bothJobs.body.documents || []).length} filed, `
+        + `${bothJobs.body.draft ? bothJobs.body.draft.scenarios.length : 0} scenarios`);
+    record('and that set is named after the write-up as filed',
+      Boolean(bothJobs.body.draft) && bothJobs.body.draft.name === 'Notion Sprawl - InScope',
+      bothJobs.body.draft ? bothJobs.body.draft.name : '');
   } catch (err) {
     record('threw', false, err.message);
   }

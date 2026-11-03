@@ -16,7 +16,7 @@ const { extractScenarios } = require('./parse');
  * one of those should stay the scenario it is.
  */
 const LABELLED_SHEETS = new Set(['diy']);
-const { askAssistant, guessProduct, justFileIt } = require('./assistant');
+const { askAssistant, guessProduct, justFileIt, scenariosOnly } = require('./assistant');
 const attachments = require('./attachments');
 const { writeWalkthrough, wantsAGuide } = require('./walkthrough');
 const { writeSpec, wantsAWriteUp, whatToWriteAbout } = require('./specs');
@@ -1282,11 +1282,20 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
     });
   }
 
+  /* Asked for scenarios and nothing else, so the attachment is read and not
+     kept: it is the source the set is drafted from, not a write-up anybody
+     asked to put on the shelf. Said in the same breath — "upload this
+     document and write scenarios" — it is still filed, because that is what
+     was asked for. */
+  const draftingOnly = (req.files || []).length > 0 && scenariosOnly(question);
+
   /* Filed before the answer is composed, so the write-up is in the context
      the scenarios are drafted from. */
-  const { documents: filed, byFile: filedByFile } = await keepWriteUps(req.files, {
-    product: guessProduct(String(question || ''), (open && open.product) || currentProduct),
-  });
+  const { documents: filed, byFile: filedByFile } = draftingOnly
+    ? { documents: [], byFile: new Map() }
+    : await keepWriteUps(req.files, {
+      product: guessProduct(String(question || ''), (open && open.product) || currentProduct),
+    });
 
   /* Asked to keep it, and nothing else. Say where it went and stop — drafting
      scenarios nobody asked for, off a write-up that was only being filed, is
@@ -1391,8 +1400,10 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
     const answer = `I wrote it up as "${written.title}" and filed it`
       + `${label ? ` under ${label}` : ''} — ${plural(written.sections, 'section')}, `
       + `${plural(written.bullets, 'point')}, from what you described. `
-      + 'It is on the Documents page. Tell me what to change and I will change it, '
-      + 'or say the word and I will write test scenarios from it.';
+      /* A document was asked for and a document is what came back. No
+         scenarios are offered off the end of it: the two are separate jobs,
+         and this one is finished. */
+      + 'It is on the Documents page. Tell me what to change and I will change it.';
 
     return res.json({
       answer,
@@ -1433,6 +1444,14 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
     draft.name = from.name;
     if (from.product) draft.product = from.product;
   });
+
+  /* The attachment was read and not kept, which is a change from what this
+     used to do, so it is said once rather than left to be noticed by a
+     document that is not on the shelf. */
+  if (draftingOnly && (result.draft || (result.drafts || []).length)) {
+    result.answer += '\n\nThe attachment was read, not filed. '
+      + 'Say "upload it" if you want it on the Documents page as well.';
+  }
 
   res.json({
     ...result,

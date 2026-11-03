@@ -97,6 +97,12 @@ Dashboard
   what is in scope is unaffected by its absence. The write-up sets the length, and nothing is
   written that the write-up does not say.
 
+  Scenarios and documents are separate jobs. *Write scenarios for this* drafts and nothing
+  else — an attached write-up is the source it drafts from, not a document to put on the shelf,
+  and the reply says so. *Create a document for this* writes the document and stops; it does not
+  draft scenarios or offer to. Asking for both in one breath — *upload this document and write
+  test scenarios* — still does both, because that is what it says.
+
   Ask for a number — *write 50+ scenarios*, *at least 30 test cases* — and you get that number.
   Models stop early on a long list however firmly the count is put to them, so the set is
   counted when it comes back and the shortfall asked for again, round by round, until it is

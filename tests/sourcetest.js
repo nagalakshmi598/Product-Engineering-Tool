@@ -110,9 +110,15 @@ const mentions = (rows, re) => rows.some((s) => re.test(s.scenario));
       !mentions(rows, /anyone-with-the-link/i), '');
     record('and not about uploading documents',
       !mentions(rows, /upload|Documents page/i), '');
-    record('the attachment is still filed',
-      (sent.body.documents || []).some((d) => d.name === 'Email Attributes Scope'),
-      (sent.body.documents || []).map((d) => d.name).join(', '));
+    /* It used to be filed as well, on the way past. Asking for scenarios is
+       asking for scenarios: the attachment is the source, and putting it on
+       the Documents page is a second job nobody asked for. */
+    record('the attachment is read, not filed',
+      !(sent.body.documents || []).length,
+      (sent.body.documents || []).map((d) => d.name).join(', ') || 'nothing filed');
+    record('and the set still takes its name, without the extension',
+      Boolean(sent.body.draft) && sent.body.draft.name === 'Email Attributes Scope',
+      sent.body.draft ? sent.body.draft.name : 'no draft');
 
     /* ---- attach it with nothing open ---- */
     const alone = await ask('write test scenarios for this document', {

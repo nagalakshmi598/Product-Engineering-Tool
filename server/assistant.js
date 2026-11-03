@@ -573,6 +573,39 @@ function justFileIt(question) {
   return FILING.test(q) && !WANTS_MORE_THAN_FILING.test(q);
 }
 
+/* The other half of the same rule: asked for scenarios and nothing else.
+ *
+ * Attaching a write-up and asking for scenarios used to do two jobs — the
+ * scenarios were drafted, and the file was put on the Documents page as
+ * well. Nobody asked for the second one. It fills the shelf with the
+ * sources of sets rather than with the write-ups the team keeps, and it
+ * makes "write scenarios" mean something different depending on whether a
+ * file came with it.
+ *
+ * The two are separate now. Say "write scenarios for this" and you get
+ * scenarios; say "upload this document and write scenarios" and you get
+ * both, because that is what it says. */
+const FILE_IT_TOO = new RegExp(
+  '\\b(?:upload|save|keep|file|store|add|put|attach)\\b'
+    + '(?:\\s+(?:it|this|that|these|those|them|the|a|an|my|our|also|too|as|well'
+      + '|in|into|to|under|on|new|same))*'
+    + '\\s*\\b(?:documents?|docs?|write-?ups?|attachments?|files?|shelf)\\b',
+  'i'
+);
+
+/**
+ * Scenarios were asked for, and nothing was said about keeping the file.
+ *
+ * @param {string} question what was asked
+ * @returns {boolean}
+ */
+function scenariosOnly(question) {
+  const q = String(question || '').toLowerCase().trim();
+  if (!q) return false;
+  if (!wantsScenarios(q)) return false;
+  return !FILE_IT_TOO.test(q);
+}
+
 /** Naming a feature is a request for scenarios too — no keyword needed. */
 function isDraftRequest(q) {
   if (wantsScenarios(q)) return true;
@@ -1630,6 +1663,21 @@ function howManyAsked(question) {
   return wanted;
 }
 
+/**
+ * An attachment's name as a set would be called it.
+ *
+ * A write-up that was filed lends the set the name it was filed under; one
+ * that was only read lends the name of the file it arrived in, and nobody
+ * calls a set of scenarios "In-Scope.docx". Only the extensions this tool
+ * reads come off, so a write-up genuinely called "Slack v1.2" keeps its
+ * name.
+ */
+function asSetName(name) {
+  return String(name || '')
+    .replace(/\.(?:docx?|pdf|md|markdown|txt|html?|rtf|odt|csv|xlsx?|pptx?)$/i, '')
+    .trim() || String(name || '');
+}
+
 /** The same scenario said twice, whatever the punctuation and case. */
 function sameScenario(text) {
   return String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -2198,7 +2246,7 @@ async function askAssistant({
         provider,
         draft: {
           feature: justTheOne.name,
-          name: openEnhancement ? openEnhancement.name : justTheOne.name,
+          name: openEnhancement ? openEnhancement.name : asSetName(justTheOne.name),
           product: openEnhancement
             ? openEnhancement.product
             : (justTheOne.product || guessProduct(text, currentProduct)),
@@ -2220,7 +2268,7 @@ async function askAssistant({
     if (perDoc.sets.length) {
       /* The set is named after the write-up, not after the file it arrived
          in: "Mail_Gmail-to-Gmail_In-Scope", not that with ".docx" on it. */
-      const titleOf = (name) => String(name || '').replace(/\.[a-z0-9]{1,5}$/i, '').trim() || String(name || '');
+      const titleOf = asSetName;
       const product = openEnhancement ? openEnhancement.product : guessProduct(text, currentProduct);
 
       const lines = [
@@ -2449,4 +2497,4 @@ async function askAssistant({
   }
 }
 
-module.exports = { askAssistant, wantsThemApart, writeUpsNamed, justFileIt, productSaidOutright, buildContext, parseDraft, howManyAsked, guessProduct, enhancementName, titleFor };
+module.exports = { askAssistant, wantsThemApart, writeUpsNamed, justFileIt, scenariosOnly, productSaidOutright, buildContext, parseDraft, howManyAsked, guessProduct, enhancementName, titleFor };
