@@ -70,21 +70,23 @@ async function upload(name) {
   return res.json();
 }
 
-async function ask(question) {
+async function ask(question, openSet) {
   const fd = new FormData();
   fd.append('question', question);
   fd.append('history', '[]');
   fd.append('currentProduct', 'datasprawl');
+  if (openSet) fd.append('currentEnhancement', openSet);
   const res = await fetch(`${BASE}/api/assistant`, { method: 'POST', body: fd });
   return { status: res.status, body: await res.json().catch(() => ({})) };
 }
 
 /** The same ask, with the write-ups handed over rather than named. */
-async function attach(question, names) {
+async function attach(question, names, openSet) {
   const fd = new FormData();
   fd.append('question', question);
   fd.append('history', '[]');
   fd.append('currentProduct', 'datasprawl');
+  if (openSet) fd.append('currentEnhancement', openSet);
   names.forEach((name) => {
     fd.append('files', new Blob([body(name)], { type: 'text/markdown' }), `${name}.md`);
   });
@@ -314,6 +316,49 @@ async function attach(question, names) {
     record('and that set is named after the write-up as filed',
       Boolean(bothJobs.body.draft) && bothJobs.body.draft.name === 'Notion Sprawl - InScope',
       bothJobs.body.draft ? bothJobs.body.draft.name : '');
+
+    /* ---- a set open behind the chat is not where another write-up lands ----
+       Twelve scenarios about private channels went onto the end of a Gmail
+       in-scope set, numbered 51-62, because that set was on the screen. */
+    const open = await (await fetch(`${BASE}/api/assistant/scenarios`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        product: 'datasprawl',
+        name: 'Mail_Gmail-to-Gmail_In-Scope_Scenarios',
+        scenarios: [{ scenario: 'Verify that mapped events are migrated.', type: 'Positive', section: 'Scan' }],
+      }),
+    })).json();
+    const here = open.enhancement.id;
+
+    const elsewhere = await attach('write test scenarios for this document separately',
+      ['Confluence Sprawl - InScope'], here);
+    record('a document attached with a set open gets its own set',
+      Boolean(elsewhere.body.draft) && !elsewhere.body.draft.enhancementId,
+      elsewhere.body.draft
+        ? (elsewhere.body.draft.enhancementId ? 'added to the open set' : elsewhere.body.draft.name)
+        : 'no draft');
+    record('named after the write-up, not the set on the screen',
+      Boolean(elsewhere.body.draft) && elsewhere.body.draft.name === 'Confluence Sprawl - InScope',
+      elsewhere.body.draft ? elsewhere.body.draft.name : '');
+    record('and the reply says which set they go in',
+      /own set/.test(String(elsewhere.body.answer))
+        && /Mail_Gmail-to-Gmail_In-Scope_Scenarios/.test(String(elsewhere.body.answer)),
+      String(elsewhere.body.answer).split('\n').slice(-1)[0].slice(0, 60));
+
+    /* ---- asked for on the end of it, they go on the end of it ---- */
+    const onto = await attach('write test scenarios for this document and add them to this set',
+      ['Asana Sprawl - InScope'], here);
+    record('"add them to this set" still adds them to it',
+      Boolean(onto.body.draft) && onto.body.draft.enhancementId === here,
+      onto.body.draft ? (onto.body.draft.enhancementId || 'own set') : 'no draft');
+
+    /* ---- several named write-ups do not pile into the open set either ---- */
+    const several = await ask('write test scenarios for Egnyte - Content Sprawl Scope and '
+      + 'Box for Business - Content Sprawl Scope', here);
+    record('two named write-ups make two sets with one open',
+      (several.body.drafts || []).length === 2
+        && (several.body.drafts || []).every((d) => !d.enhancementId),
+      `${(several.body.drafts || []).length} sets`);
   } catch (err) {
     record('threw', false, err.message);
   }

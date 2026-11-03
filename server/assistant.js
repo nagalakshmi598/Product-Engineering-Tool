@@ -2194,6 +2194,35 @@ function wantsThemTogether(q) {
   return TOGETHER.test(String(q || ''));
 }
 
+/* Asked for them on the end of the set that is already open.
+ *
+ * Which is a thing worth asking for — a second write-up covering the same
+ * feature, more scenarios for a set being built up — but it has to be asked
+ * for. Having a set open on the screen is where the question was typed, not
+ * what it was about. */
+const ONTO_THE_OPEN_SET = new RegExp(
+  '\\b(?:add|append|put|include|file|save|keep|stick)\\b'
+    + '(?:\\s+(?:them|these|those|it|this|that|all|the|a|an|new|more|rest|ones?'
+      + '|scenarios?|sceanrios?|cases?|also|too|as\\s+well))*'
+    + '\\s*\\b(?:to|in|into|under|onto|on|at)\\s+'
+    + '(?:the\\s+)?(?:this|that|same|current|open|existing|end\\s+of)\\b'
+  + '|\\b(?:continue|carry\\s+on\\s+(?:with|in)|add\\s+to)\\s+'
+    + '(?:this|the|that)\\s+(?:set|list|enhancement)\\b'
+  + '|\\b(?:same|this|current|open|existing)\\s+(?:set|list|enhancement)\\b',
+  'i'
+);
+
+function ontoTheOpenSet(q) {
+  return ONTO_THE_OPEN_SET.test(String(q || ''));
+}
+
+/* Two names for the same set, spelling and file extension aside. A write-up
+   asked about while the set it already produced is open is that set. */
+function sameSet(a, b) {
+  const tidy = (s) => asSetName(String(s || '')).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  return Boolean(tidy(a)) && tidy(a) === tidy(b);
+}
+
 async function askAssistant({
   question,
   history = [],
@@ -2293,22 +2322,6 @@ async function askAssistant({
     ? await writeUpsInScope(text, currentProduct)
     : { list: [], named: false };
 
-  /* Naming them is asking for them. Saying "separately" is asking for them
-     apart. Either one is enough; falling back to the whole shelf is not. */
-  const perWriteUp = drafting
-    && (wantsEveryWriteUp(text) || wantsThemApart(text)
-      || (!files.length && scope.named && scope.list.length > 1));
-
-  /* One write-up, pointed at rather than described.
-   *
-   * "Write test scenarios for this document" was read as a feature called
-   * "this document", and came back as scenarios about uploading documents.
-   * What it asks for is the feature the write-up specifies — so the write-up
-   * is found, its words are what the scenarios are drafted from, and the set
-   * takes its name. */
-  const theOpenOne = openDocument && POINTS_AT_A_WRITE_UP.test(text) ? openDocument : null;
-  const theNamedOne = scope.named && scope.list.length === 1 ? scope.list[0] : null;
-
   /* A write-up that came with the message is the one being asked about.
    *
    * It is already filed by the time this runs, so it is also on the shelf —
@@ -2330,6 +2343,28 @@ async function askAssistant({
   const attachedWriteUps = files.filter((f) => (
     (f.kind === 'document' || f.kind === 'text') && String(f.text || '').trim().length > 200
   ));
+
+  /* Naming them is asking for them. Saying "separately" is asking for them
+     apart. Either one is enough; falling back to the whole shelf is not.
+
+     Write-ups handed over with the message are what "all of them" and
+     "separately" are about, so the shelf is not read instead: "write
+     scenarios for this document separately", with one document attached,
+     used to draft from five write-ups nobody had mentioned and leave the
+     attached one out of it. */
+  const perWriteUp = drafting && !attachedWriteUps.length
+    && (wantsEveryWriteUp(text) || wantsThemApart(text)
+      || (!files.length && scope.named && scope.list.length > 1));
+
+  /* One write-up, pointed at rather than described.
+   *
+   * "Write test scenarios for this document" was read as a feature called
+   * "this document", and came back as scenarios about uploading documents.
+   * What it asks for is the feature the write-up specifies — so the write-up
+   * is found, its words are what the scenarios are drafted from, and the set
+   * takes its name. */
+  const theOpenOne = openDocument && POINTS_AT_A_WRITE_UP.test(text) ? openDocument : null;
+  const theNamedOne = scope.named && scope.list.length === 1 ? scope.list[0] : null;
 
   const theAttachedOne = drafting && !perWriteUp && attachedWriteUps.length === 1
     ? attachedWriteUps[0]
@@ -2354,12 +2389,32 @@ async function askAssistant({
     ? (theNamedOne || theOpenOne)
     : null);
 
+  /* A write-up's scenarios are that write-up's set.
+   *
+   * A second document, attached with "write test scenarios for this one
+   * separately", used to be drafted straight onto whichever set the chat
+   * happened to be open behind: twelve scenarios about private channels
+   * numbered 51–62 on the end of a Gmail in-scope set, with nothing in the
+   * reply saying where they had gone. The page a question is typed on is not
+   * what the question is about.
+   *
+   * So the write-up names its own set, and the open one is added to when the
+   * message asks for that — or when the write-up is the one that set was
+   * drafted from in the first place, where a second set of the same name
+   * would be the wrong answer twice. */
+  const keepsTheOpenSet = (writeUp) => Boolean(
+    openEnhancement
+      && !wantsThemApart(text)
+      && (ontoTheOpenSet(text) || sameSet(openEnhancement.name, writeUp && writeUp.name))
+  );
+
   if (justTheOne) {
     const written = await draftPerWriteUp([justTheOne], {
       provider, model, history: trimmed, system: SYSTEM_DRAFT, question: text, prefixSections: false,
     });
 
     const set = written.sets[0];
+    const carryOn = keepsTheOpenSet(justTheOne);
     if (set && set.scenarios.length) {
       const lines = [
         `${plural(set.scenarios.length, 'scenario')} from what "${justTheOne.name}" specifies:`,
@@ -2375,17 +2430,26 @@ async function askAssistant({
           + 'what else to cover and I will write the rest.');
       }
 
+      /* A set open behind the chat and a different write-up asked about: say
+         which set these are going to, because the other one is on the screen
+         and would otherwise be the obvious guess. */
+      if (openEnhancement && !carryOn) {
+        lines.push('', `These go in their own set, "${asSetName(justTheOne.name)}", `
+          + `not on the end of "${openEnhancement.name}". `
+          + 'Say "add them to this set" if you want them there instead.');
+      }
+
       return {
         answer: lines.join('\n'),
         model,
         provider,
         draft: {
           feature: justTheOne.name,
-          name: openEnhancement ? openEnhancement.name : asSetName(justTheOne.name),
-          product: openEnhancement
+          name: carryOn ? openEnhancement.name : asSetName(justTheOne.name),
+          product: carryOn
             ? openEnhancement.product
             : (justTheOne.product || guessProduct(text, currentProduct)),
-          enhancementId: openEnhancement ? openEnhancement.id : null,
+          enhancementId: carryOn ? openEnhancement.id : null,
           scenarios: set.scenarios,
           save: wantsSaved(text),
         },
@@ -2465,8 +2529,11 @@ async function askAssistant({
            Asked for them together — "in one set", "combined" — they are
            combined instead. */
         /* Asked for them apart, they go apart even with a set open — the
-           instruction is about the write-ups, not about the page. */
-        if (!wantsThemTogether(text) && (wantsThemApart(text) || !openEnhancement)) {
+           instruction is about the write-ups, not about the page. And a set
+           being open is not itself the instruction: several write-ups land
+           in several sets unless the message says to put them together or
+           to put them on the end of the one already open. */
+        if (!wantsThemTogether(text) && !ontoTheOpenSet(text)) {
           const lines = [
             `${plural(perDoc.total, 'scenario')} across ${plural(perDoc.sets.length, 'write-up')}, `
               + 'each filed under its own name:',
@@ -2644,4 +2711,4 @@ async function askAssistant({
   }
 }
 
-module.exports = { askAssistant, wantsThemApart, writeUpsNamed, justFileIt, scenariosOnly, productSaidOutright, buildContext, parseDraft, howManyAsked, guessProduct, enhancementName, titleFor };
+module.exports = { askAssistant, wantsThemApart, ontoTheOpenSet, writeUpsNamed, justFileIt, scenariosOnly, productSaidOutright, buildContext, parseDraft, howManyAsked, guessProduct, enhancementName, titleFor };

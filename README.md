@@ -91,6 +91,12 @@ Dashboard
   holding only its own scenarios, with a way into every one of them. Add *in one set* to have
   them combined instead.
 
+  A write-up's scenarios go in that write-up's own set, including with a set already open on
+  the screen behind the chat: the page a question is typed on is not what the question is
+  about, and the reply says which set they are going in. Say *add them to this set* to put
+  them on the end of the open one instead. Asking for more scenarios without naming or
+  attaching a write-up still adds them to the set you are looking at.
+
   Each set is drafted from its write-up alone and is read statement by statement: every
   behaviour, rule, limit, field, message and exclusion it states gets a scenario, and what it
   rules out is tested as well — that a thing listed as out of scope does not happen, and that
