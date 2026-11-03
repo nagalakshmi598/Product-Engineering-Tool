@@ -25,6 +25,31 @@ const WRITE_UPS = [
   'Box for Business - Content Sprawl Scope',
 ];
 
+/* ---------------- a number of scenarios, read off the sentence ---------------- */
+
+const { howManyAsked } = require('../server/assistant');
+
+[
+  ['write test scenarios for this document inscopes write upto 50+ scenarios '
+    + 'both positive,negative and edge cases', 50],
+  ['write 50 scenarios', 50],
+  ['write at least 30 test scenarios for this', 30],
+  ['give me 60 test cases', 60],
+  ['minimum of 25 scenarios please', 25],
+  ['write around 40 detailed scenarios', 40],
+
+  /* A number that is not a count of what to write. */
+  ['write test scenarios for this document', 0],
+  ['generate test cases for scenario 4', 0],
+  ['attachments up to 25 MB are migrated with the email', 0],
+  ['write test scenarios for Mail_Gmail-to-Gmail_(02-11-2026)_In-Scope', 0],
+  ['write 2 scenarios', 0],
+  ['write 5000 scenarios', 0],
+].forEach(([said, want]) => {
+  record(`${want ? `${want} asked for` : 'no count'}: "${said.slice(0, 40)}"`,
+    howManyAsked(said) === want, String(howManyAsked(said)));
+});
+
 const body = (name) => [
   `# ${name}`,
   '',
@@ -215,6 +240,39 @@ async function attach(question, names) {
       /rules out is tested too/.test(briefed), '');
     record('and no scenario count decides the length first',
       /briefed without a scenario count/.test(briefed), '');
+
+    /* ---- a number asked for is a number written ----
+       "Write up to 50+ scenarios" and thirty-six came back. A model told to
+       write a long list stops when it has had enough of writing it, so the
+       count is held here: counted, and asked for again until it is reached. */
+    const counted = await attach('write test scenarios for this document, upto 20+ scenarios',
+      ['Sharepoint Sprawl - InScope']);
+    const got = counted.body.draft ? counted.body.draft.scenarios : [];
+
+    record('asked for twenty, twenty come back', got.length >= 20, `${got.length} scenarios`);
+    record('and none of them is written twice',
+      new Set(got.map((s) => s.scenario.toLowerCase())).size === got.length,
+      `${new Set(got.map((s) => s.scenario.toLowerCase())).size} distinct`);
+    record('the later rounds carry on rather than start again',
+      got.some((s) => /handles case 2[0-9]|handles case 1[0-9]/.test(s.scenario)),
+      got.slice(-1).map((s) => s.scenario).join(''));
+    record('all three kinds are still there',
+      ['Positive', 'Negative', 'Edge'].every((k) => got.some((s) => s.type === k)),
+      [...new Set(got.map((s) => s.type))].join(','));
+
+    /* Each of several write-ups is held to the number, not the lot of them. */
+    const bothCounted = await attach('write 20 scenarios for each of these documents',
+      ['Teams Sprawl - InScope', 'Teams Sprawl - Out of Scope']);
+    record('a number asked for applies to every set',
+      (bothCounted.body.drafts || []).length === 2
+        && bothCounted.body.drafts.every((d) => d.scenarios.length >= 20),
+      (bothCounted.body.drafts || []).map((d) => d.scenarios.length).join(' + '));
+
+    /* ---- and no number means no padding ---- */
+    const unasked = await attach('write test scenarios for this document', ['Jira Sprawl - InScope']);
+    record('with no number named, the set is the draft as it came',
+      Boolean(unasked.body.draft) && unasked.body.draft.scenarios.length < 20,
+      unasked.body.draft ? `${unasked.body.draft.scenarios.length} scenarios` : 'no draft');
 
     const justFile = await attach('keep these documents', ['Egnyte Sprawl - Limitations']);
     record('attaching without asking for scenarios still only files',

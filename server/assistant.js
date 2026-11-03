@@ -1582,6 +1582,137 @@ async function askAgainFor(kinds, already, { provider, model, context, history, 
   }
 }
 
+/* ---------------- a number of scenarios, asked for outright ----------------
+ *
+ * "Write up to 50+ scenarios, positive, negative and edge" is an instruction
+ * with a number in it, and a set of thirty-six does not carry it out. Models
+ * stop early on a long list however firmly the number is put to them, so the
+ * number is held here instead: asked for, counted, and asked for again until
+ * the count is reached.
+ */
+
+/* The number, wherever it sits in the sentence. It has to run into the word
+   for the thing being counted — "50 scenarios", "50+ test cases" — so that
+   "scenario 4", "25 MB" and a date in a file name are not read as counts. */
+const HOW_MANY = new RegExp(
+  '(?:^|[^\\w.])'
+    + '(?:at\\s+least\\s+|minimum\\s+(?:of\\s+)?|min\\.?\\s+|no\\s+fewer\\s+than\\s+'
+      + '|more\\s+than\\s+|up\\s*to\\s+|upto\\s+|about\\s+|around\\s+|roughly\\s+|some\\s+)?'
+    + '(\\d{1,3})\\s*\\+?\\s*'
+    + '(?:or\\s+more\\s+|plus\\s+)?'
+    + '(?:different\\s+|detailed\\s+|clear\\s+|good\\s+|new\\s+|more\\s+)*'
+    + '(?:test\\s+)?(?:scenarios?|test\\s*cases?|cases?)\\b',
+  'i'
+);
+
+/* Fewer than this is a phrase rather than an instruction — "2 scenarios" is
+   usually somebody counting what is there, not asking for a set that size. */
+const FEWEST_WORTH_ASKING = 5;
+
+/* Past this the number is a figure of speech, and a thousand calls after it
+   is not what anybody meant. */
+const MOST_WORTH_ASKING = 300;
+
+/**
+ * How many scenarios were asked for, or 0 when no number was named.
+ *
+ * @param {string} question what was asked
+ * @returns {number}
+ */
+function howManyAsked(question) {
+  const found = HOW_MANY.exec(String(question || ''));
+  if (!found) return 0;
+
+  const wanted = Number(found[1]);
+  if (!Number.isInteger(wanted)) return 0;
+  if (wanted < FEWEST_WORTH_ASKING || wanted > MOST_WORTH_ASKING) return 0;
+
+  return wanted;
+}
+
+/** The same scenario said twice, whatever the punctuation and case. */
+function sameScenario(text) {
+  return String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/** One more round, asking for the scenarios the set is still short of. */
+async function askForMore(shortBy, already, { provider, model, context = '', history, system, question, about }) {
+  const ask = [
+    about || `These scenarios were drafted for: ${question}`,
+    '',
+    `Written so far (${already.length}):`,
+    already.map((s, i) => `${i + 1}. [${s.type}] ${s.scenario}`).join('\n'),
+    '',
+    `That is ${shortBy} short of the ${already.length + shortBy} that were asked for.`,
+    `Write ${shortBy} more for the same feature, carrying straight on from the list`,
+    'above: different checks, not the same ones said again in other words.',
+    'Keep the mix — roughly a third positive, the rest negative and edge — and',
+    'keep drawing on the same source as the ones above.',
+    '',
+    'Do not repeat any scenario above. Number from 1 and label each one',
+    '[Positive], [Negative] or [Edge].',
+  ].join('\n');
+
+  try {
+    const answer = provider === 'openai'
+      ? await callOpenAi({ model, context, question: ask, history, system, images: [] })
+      : await callAnthropic({ model, context, question: ask, history, system, images: [] });
+
+    return parseDraft(String(answer || ''));
+  } catch (err) {
+    /* What is written is written; a short set beats losing the lot. */
+    return [];
+  }
+}
+
+/* Rounds of asking before it is accepted that there is no more to say. A
+   model that answers with nothing new twice running has run out, and asking
+   a third time spends a call to be told so again. */
+const MOST_ROUNDS = 6;
+
+/**
+ * Keep asking until the set is as long as it was asked to be.
+ *
+ * @param {number} target how many were asked for; 0 to leave the set alone
+ * @param {Array} rows what came back the first time
+ * @param {object} options what to ask with
+ * @returns {Promise<{scenarios: Array, added: Array, short: number}>}
+ */
+async function fillTo(target, rows, options) {
+  const out = rows.slice();
+  const added = [];
+
+  if (!target || out.length >= target) return { scenarios: out, added, short: 0 };
+
+  const seen = new Set(out.map((s) => sameScenario(s.scenario)));
+  let barren = 0;
+
+  for (let round = 0; out.length < target && round < MOST_ROUNDS; round += 1) {
+    // each round has to know what the last one wrote, so they go one at a time
+    // eslint-disable-next-line no-await-in-loop
+    const more = await askForMore(target - out.length, out, options);
+
+    const fresh = more.filter((s) => {
+      const key = sameScenario(s.scenario);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    if (!fresh.length) {
+      barren += 1;
+      if (barren >= 2) break;
+      continue; // eslint-disable-line no-continue
+    }
+
+    barren = 0;
+    out.push(...fresh);
+    added.push(...fresh);
+  }
+
+  return { scenarios: out, added, short: Math.max(0, target - out.length) };
+}
+
 /*
  * Asking for scenarios across a shelf of write-ups rather than one.
  *
@@ -1768,6 +1899,10 @@ async function draftPerWriteUp(documents, { provider, model, history, system, qu
   const refused = [];
   let total = 0;
 
+  /* A number asked for outright beats everything about how long a set should
+     be: the house rules' twelve to twenty, and the write-up's own length. */
+  const asked = howManyAsked(question);
+
   /* The house rules, with the two that work against covering one write-up
      lifted: a scenario count, which decides the length before the write-up
      has been read, and the licence to write a line about what the write-up
@@ -1777,8 +1912,12 @@ async function draftPerWriteUp(documents, { provider, model, history, system, qu
 
 READING ONE WRITE-UP
 The turn below gives you a single write-up and nothing else. For it:
-- The count above does not apply. The write-up sets the length: as many
-  scenarios as it has statements to test, and no padding beyond them.
+${asked
+    ? `- The count above does not apply. ${asked} scenarios were asked for: write
+  at least that many, covering every statement in the write-up on the way,
+  and do not stop short of ${asked} while anything in it is still untested.`
+    : `- The count above does not apply. The write-up sets the length: as many
+  scenarios as it has statements to test, and no padding beyond them.`}
 - Do not write a line marked "(not stated in the write-up)". What it does
   not state is not tested here.`;
 
@@ -1824,6 +1963,11 @@ The turn below gives you a single write-up and nothing else. For it:
       '',
       'Write about the feature it specifies, never about the write-up itself:',
       'not uploading it, not opening it, not what the Documents page does with it.',
+      asked
+        ? `\nHOW MANY. ${asked} scenarios were asked for; write at least ${asked}. Take a\n`
+          + 'statement apart into the separate checks it is really making rather than\n'
+          + `padding with the same line said twice, and keep going until there are ${asked}.`
+        : '',
       prefixSections ? `Begin each section name with "${doc.name} — ".` : '',
     ].filter(Boolean).join('\n');
 
@@ -1832,8 +1976,21 @@ The turn below gives you a single write-up and nothing else. For it:
         ? await callOpenAi({ model, context: '', question: ask, history, system: perDocument, images: [] })
         : await callAnthropic({ model, context: '', question: ask, history, system: perDocument, images: [] });
 
-      const rows = parseDraft(String(answer || ''));
-      if (!rows.length) { refused.push(doc.name); continue; }
+      const first = parseDraft(String(answer || ''));
+      if (!first.length) { refused.push(doc.name); continue; }
+
+      /* Asked for fifty and given thirty-six, ask again for the fourteen.
+         A model told to write a long list stops when it has had enough of
+         writing it, however plainly the number was put; counting what came
+         back and asking for the rest is the only thing that holds it. */
+      // one write-up at a time, each needing the rounds before it
+      // eslint-disable-next-line no-await-in-loop
+      const { scenarios: rows, short } = await fillTo(asked, first, {
+        provider, model, history, system: perDocument, question,
+        about: `These scenarios were drafted from the write-up "${doc.name}", `
+          + 'for the feature it specifies. Carry on from them, drawing on the '
+          + 'same write-up and nothing else.',
+      });
 
       /* Within its own set the write-up's name is on the card, so the section
          keeps whatever the draft called it. Combined into one, the name is
@@ -1841,6 +1998,7 @@ The turn below gives you a single write-up and nothing else. For it:
          came from. */
       sets.push({
         name: doc.name,
+        short,
         scenarios: rows.map((row) => ({
           ...row,
           section: row.section || (prefixSections ? doc.name : ''),
@@ -2026,6 +2184,14 @@ async function askAssistant({
         ...set.scenarios.map((s, i) => `${i + 1}. [${s.type}] ${s.scenario}`),
       ];
 
+      /* Asked for a number and short of it, say so rather than letting the
+         count be checked by hand against the question. */
+      if (set.short) {
+        lines.push('', `That is ${set.scenarios.length} of the ${howManyAsked(text)} you asked for — `
+          + 'what came back after that was the same checks in other words. Say '
+          + 'what else to cover and I will write the rest.');
+      }
+
       return {
         answer: lines.join('\n'),
         model,
@@ -2068,6 +2234,14 @@ async function askAssistant({
         lines.push('', `Nothing came back for: ${perDoc.refused.map(titleOf).join(', ')}. `
           + 'Ask for those on their own.');
       }
+
+      const shortOnes = perDoc.sets.filter((s) => s.short);
+      if (shortOnes.length) {
+        lines.push('', `Short of the ${howManyAsked(text)} asked for: `
+          + `${shortOnes.map((s) => `${titleOf(s.name)} (${s.scenarios.length})`).join(', ')}. `
+          + 'What came back after that was the same checks in other words.');
+      }
+
       lines.push('', 'Say "in one set" if you want them together instead.');
 
       return {
@@ -2220,6 +2394,27 @@ async function askAssistant({
             + more.map((s, i) => `${scenarios.length - more.length + i + 1}. [${s.type}] ${s.scenario}`).join('\n');
         }
       }
+
+      /* A number named in the question is an instruction, not a hint. Asked
+         for fifty and given thirty-six, ask again for the fourteen. */
+      const target = howManyAsked(text);
+      if (target > scenarios.length) {
+        const before = scenarios.length;
+        const filled = await fillTo(target, scenarios, {
+          provider, model, context, history: trimmed, system, question: text,
+        });
+
+        if (filled.added.length) {
+          scenarios = filled.scenarios;
+          full += `\n\n${filled.added.length} more, to the ${target} you asked for:\n`
+            + filled.added.map((s, i) => `${before + i + 1}. [${s.type}] ${s.scenario}`).join('\n');
+        }
+        if (filled.short) {
+          full += `\n\nThat is ${scenarios.length} of the ${target} asked for — `
+            + 'what came back after that was the same checks said again. '
+            + 'Say what else to cover and I will write the rest.';
+        }
+      }
     }
 
     return {
@@ -2254,4 +2449,4 @@ async function askAssistant({
   }
 }
 
-module.exports = { askAssistant, wantsThemApart, writeUpsNamed, justFileIt, productSaidOutright, buildContext, parseDraft, guessProduct, enhancementName, titleFor };
+module.exports = { askAssistant, wantsThemApart, writeUpsNamed, justFileIt, productSaidOutright, buildContext, parseDraft, howManyAsked, guessProduct, enhancementName, titleFor };

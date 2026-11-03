@@ -19,6 +19,28 @@ class FakeOpenAI {
             ? user.content
             : (user.content.find((p) => p.type === 'text') || {}).text || '';
 
+          /* Asked for more, because the set is short of a number that was
+             named. Each round writes the shortfall, and writes it fresh, so
+             a tool that stops asking one round early shows up as a count. */
+          const shortBy = /That is (\d+) short of the (\d+) that were asked for/.exec(text);
+          if (shortBy) {
+            const from = /the write-up "([^"]+)"/.exec(text);
+            const whose = from ? from[1] : 'the feature';
+            const sofar = Number((/Written so far \((\d+)\)/.exec(text) || [])[1] || 0);
+            const want = Number(shortBy[1]);
+
+            return {
+              choices: [{
+                message: {
+                  content: Array.from({ length: want }, (_, i) => {
+                    const kind = i % 3 === 0 ? 'Positive' : (i % 3 === 1 ? 'Negative' : 'Edge');
+                    return `${i + 1}. [${kind}] Verify that ${whose} handles case ${sofar + i + 1}.`;
+                  }).join('\n'),
+                },
+              }],
+            };
+          }
+
           const named = /=== "([^"]+)" ===/.exec(text);
           const who = named ? named[1] : 'unknown';
           asked.push(who);

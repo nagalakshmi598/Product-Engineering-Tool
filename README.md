@@ -94,8 +94,14 @@ Dashboard
   Each set is drafted from its write-up alone and is read statement by statement: every
   behaviour, rule, limit, field, message and exclusion it states gets a scenario, and what it
   rules out is tested as well — that a thing listed as out of scope does not happen, and that
-  what is in scope is unaffected by its absence. The write-up sets the length; there is no
-  target count, and nothing is written that the write-up does not say.
+  what is in scope is unaffected by its absence. The write-up sets the length, and nothing is
+  written that the write-up does not say.
+
+  Ask for a number — *write 50+ scenarios*, *at least 30 test cases* — and you get that number.
+  Models stop early on a long list however firmly the count is put to them, so the set is
+  counted when it comes back and the shortfall asked for again, round by round, until it is
+  reached. Repeats are dropped rather than counted. If it genuinely runs out of distinct checks
+  the reply says how many it reached and why, rather than quietly handing over a short set.
 
 ## Database
 
