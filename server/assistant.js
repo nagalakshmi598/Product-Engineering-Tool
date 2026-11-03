@@ -133,7 +133,9 @@ Rules:
   its order of steps. A scenario that could have been written without reading
   it is a wasted line: "Verify that the migration completes" says nothing that
   the write-up does not already promise. Name the write-up you drew on in one
-  short line before the scenarios.
+  short line before the scenarios — but only where you drew on one. Where the
+  feature was described in the message itself, say nothing at all before the
+  first scenario; "Write-up referred: none" is a line nobody needed.
 - Where the write-up is silent on something a tester would need to know, write
   the scenario anyway and mark it: put "(not stated in the write-up)" at the
   end of the line, so the gap is visible rather than guessed over.
@@ -545,9 +547,35 @@ function isQuestion(q) {
   return /^(how|what|whats|which|why|when|where|who|whose|is|are|was|were|do|does|did|can|could|should|would|will|has|have|any|tell|explain|describe|count)\b/.test(s);
 }
 
+/*
+ * The ask, said at the front of the message, before anything it describes.
+ *
+ * Everything after it is the feature, and the feature is written in the
+ * vocabulary of a feature: "is listed under Needs Access", "shows Resolve
+ * access to continue", "recorded with the reason Skipped by admin". Read as
+ * a whole, a message like that trips every guard meant for somebody asking a
+ * question — list, show, reason — and a plain request for scenarios comes
+ * back as a paragraph about what the write-ups say.
+ *
+ * So where the message opens by asking for scenarios outright, that is what
+ * it is, whatever words the description after it happens to use. "Why did
+ * you write these scenarios" does not open that way and is still a question.
+ */
+const OPENS_WITH_A_DRAFT_ASK = new RegExp(
+  '^\\s*(?:please\\s+|hi\\s+|hey\\s+|ok(?:ay)?\\s+|now\\s+|also\\s+|and\\s+|then\\s+'
+    + '|can\\s+you\\s+|could\\s+you\\s+|you\\s+(?:need\\s+to\\s+|should\\s+|can\\s+)?)*'
+    + '(?:write|draft|generate|create|prepare|produce|make|give|provide)\\b'
+    + '(?:\\s+(?:me|us|a|an|the|all|some|more|new|out|detailed|detail|clear|clearly'
+      + '|proper|properly|complete|full|up\\s*to|upto|at\\s+least|minimum|of|\\d{1,3}\\+?)){0,8}'
+    + '\\s*(?:test\\s+)?(?:scenarios?|sceanrios?|test\\s*cases?|cases?)\\b',
+  'i'
+);
+
 /** Did the user ask, in so many words, for scenarios? */
 function wantsScenarios(q) {
   if (!mentionsScenario(q)) return false;
+  /* The ask leads; the rest of the message is what it is about. */
+  if (OPENS_WITH_A_DRAFT_ASK.test(q)) return true;
   if (LOOKUP_VERBS.test(q)) return false;
   return DRAFT_VERBS.test(q) || /\b(scenarios?|test cases?|sceanrios?)\s+(for|on|about)\b/.test(q);
 }
@@ -1615,6 +1643,77 @@ async function askAgainFor(kinds, already, { provider, model, context, history, 
   }
 }
 
+/*
+ * Covering a feature described in the chat as closely as one in a write-up.
+ *
+ * It goes in the system message rather than on the end of the question. Put
+ * in the turn it was the last thing read and it won, but it won over the
+ * house rules as well: the answer came back as markdown headings with
+ * "Expected Result" under each, which parses to no scenarios at all and
+ * reaches the person as a chat bubble where a set should have been. Beside
+ * the shape rules instead, it adds to them rather than displacing them.
+ */
+const COVER_IT_ALL = `
+COVERING WHAT YOU WERE GIVEN
+- Work through what the user described, and the write-up it refers to where
+  there is one, in the order it is written. Every statement in it gets at
+  least one scenario of its own: every behaviour, rule, limit, field, label,
+  message, status, path, mapping and exclusion. The ones that can go wrong
+  get a negative and an edge case as well.
+- The count above is a floor, not a ceiling. The detail you were given sets
+  the length, and a statement nobody wrote a line for is the one that ships
+  untested.
+- Where something is stated as out of scope, not supported, skipped or not
+  migrated, write the scenario that verifies it does not happen, and that
+  what is in scope is unaffected by its absence.
+- Draft from what you were given — its own field names, its own limits, its
+  own messages — rather than from what migrations usually do.
+- Every rule above about the shape of the answer still holds. Plain text,
+  one numbered line each, "1. [Positive] Verify that ...", nothing before the
+  first line or after the last.`;
+
+/**
+ * The same scenarios again, as a list this time.
+ *
+ * A drafted set reaches the page only if it can be read back off the answer,
+ * and a model that writes "**Scenario 1:**" with an Expected Result under it
+ * has written a perfectly good set that parses to nothing. What the person
+ * then sees is a chat bubble where a table should have been, with no Save
+ * button and no sign that anything went wrong. Asked to write the same lines
+ * out plainly, it does.
+ *
+ * @param {string} answer what came back in the wrong shape
+ * @returns {Promise<Array>} the scenarios, or none if it cannot be recovered
+ */
+async function asNumberedList(answer, { provider, model, history, system }) {
+  const ask = [
+    'These test scenarios came back in the wrong shape:',
+    '',
+    String(answer).slice(0, 12000),
+    '',
+    'Write the same scenarios out again as a plain numbered list and nothing',
+    'else. One per line, like this:',
+    '',
+    '    1. [Positive] Verify that ...',
+    '    2. [Negative] Verify that ...',
+    '',
+    'The kind in square brackets is one of [Positive], [Negative] or [Edge].',
+    'Keep every scenario that is there — lose none, add none, change no',
+    'wording — and say nothing before the first line or after the last.',
+  ].join('\n');
+
+  try {
+    const plain = provider === 'openai'
+      ? await callOpenAi({ model, context: '', question: ask, history, system, images: [] })
+      : await callAnthropic({ model, context: '', question: ask, history, system, images: [] });
+
+    return parseDraft(String(plain || ''));
+  } catch (err) {
+    /* Nothing recovered; the prose answer still goes to the person. */
+    return [];
+  }
+}
+
 /* ---------------- a number of scenarios, asked for outright ----------------
  *
  * "Write up to 50+ scenarios, positive, negative and edge" is an instruction
@@ -1827,6 +1926,23 @@ const POINTS_AT_A_WRITE_UP = new RegExp(
  * Slack Message Sprawl-InScope" names three, and those three are the job —
  * not every write-up filed under the product they happen to share.
  */
+/**
+ * The message carries the feature in its own words.
+ *
+ * Several sentences of behaviour, rather than a line asking for scenarios on
+ * something named. Counted rather than guessed at: a request names a thing
+ * in a clause, a description states things in sentences.
+ *
+ * @param {string} question what was asked
+ * @returns {boolean}
+ */
+function carriesItsOwnDescription(question) {
+  const text = String(question || '').trim();
+  if (text.split(/\s+/).filter(Boolean).length < 35) return false;
+
+  return (text.match(/[.;!?](?:\s|$)/g) || []).length >= 2;
+}
+
 function writeUpsNamed(question, documents) {
   const q = String(question || '').toLowerCase();
 
@@ -1837,6 +1953,16 @@ function writeUpsNamed(question, documents) {
     .map((hit) => hit.doc);
 
   if (exact.length) return exact;
+
+  /* A message that spells the feature out is about that feature.
+   *
+   * Matching on a title's words is for "confluence to sharepoint" standing in
+   * for a write-up nobody wants to type the name of. Run over a paragraph
+   * describing a functionality, it finds whichever write-up happens to share
+   * two words with it: a description of private channels needing access came
+   * back as twenty-seven scenarios off "Teams as destination private
+   * channels", which was not what was described and nothing said so. */
+  if (carriesItsOwnDescription(q)) return [];
 
   /* Nobody types "Confluence-to-SharePoint-Migration-Walkthrough (1)". They
      type "confluence to sharepoint", and mean that write-up and no other. */
@@ -2128,7 +2254,11 @@ async function askAssistant({
      answering with eight edge cases nobody asked for answers a different
      question — so an account asked for is an account given, attachment or
      no attachment. */
-  const wantsAnAccount = ASKS_FOR_AN_ACCOUNT.test(text) || REASONING.test(text);
+  /* Asked for scenarios at the front of the message, so the message is a
+     request for scenarios — "recorded with the reason Skipped by admin" is
+     the feature talking, not somebody asking why something happened. */
+  const wantsAnAccount = !OPENS_WITH_A_DRAFT_ASK.test(text)
+    && (ASKS_FOR_AN_ACCOUNT.test(text) || REASONING.test(text));
 
   const drafting = !wantsAnAccount
     && (Boolean(scenarioFallback(text)) || (files.length > 0 && isDraftRequest(text.toLowerCase())));
@@ -2149,7 +2279,12 @@ async function askAssistant({
   const context = (await buildContext(text)) + attachmentContext(fileText);
   // a drafting request only reaches here when no write-up covered the feature
   // briefed to draft only when drafting is what was asked for
-  const system = drafting ? SYSTEM_DRAFT : SYSTEM;
+  /* A functionality described in the message is covered the way one in a
+     write-up is: statement by statement. It used to get the house dozen —
+     generic lines about emojis and maximum lengths — off a paragraph that
+     named six behaviours and three error messages, most of which went
+     untested and none of which was said to have been skipped. */
+  const system = drafting ? `${SYSTEM_DRAFT}\n${COVER_IT_ALL}` : SYSTEM;
 
   /* A question about more than one write-up is answered a write-up at a time.
      Three ways of asking for that, all meaning the same thing: "all the
@@ -2423,6 +2558,18 @@ async function askAssistant({
     if (!drafting) return { answer: full, model, provider };
 
     let scenarios = parseDraft(tidy);
+
+    /* Scenarios were asked for and something came back that is not a list of
+       them. Nine times in ten it is the set, written as prose; asking for it
+       as a list costs one call and saves the whole thing. */
+    if (!scenarios.length && tidy.length > 200) {
+      const recovered = await asNumberedList(tidy, { provider, model, history: trimmed, system });
+      if (recovered.length) {
+        scenarios = recovered;
+        full = dropped + `${recovered.length} scenarios:\n`
+          + recovered.map((s, i) => `${i + 1}. [${s.type}] ${s.scenario}`).join('\n');
+      }
+    }
 
     /* A write-up states how a feature behaves, so a draft taken from one can
        come back as a list of confirmations — every scenario positive, not a

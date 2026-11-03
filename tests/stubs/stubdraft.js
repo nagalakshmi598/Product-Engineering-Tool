@@ -56,6 +56,8 @@ class FakeOpenAI {
               && `Verify that what ${who} rules out is tested too.`,
             /READING ONE WRITE-UP/.test(system) && /count above does not apply/.test(system)
               && `Verify that ${who} is briefed without a scenario count.`,
+            /COVERING WHAT YOU WERE GIVEN/.test(system) && /floor, not a ceiling/.test(system)
+              && 'Verify that what was described is covered statement by statement.',
           ].filter(Boolean);
 
           return {

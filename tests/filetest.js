@@ -102,7 +102,11 @@ async function setsIn(product) {
     record('and no set was created anywhere',
       (await setsIn('message')).length === 0 && (await setsIn('content')).length === 0,
       `${(await setsIn('message')).length} in Message, ${(await setsIn('content')).length} in Content`);
-    record('it offers to write them', /write test scenarios/i.test(String(sent.body.answer)), '');
+    /* Nor does it raise them. Filing is one job and drafting is another; an
+       answer to "upload this" that talks about test scenarios runs the two
+       together on the page even when the code keeps them apart. */
+    record('nor does it bring them up', !/test scenarios|test cases/i.test(String(sent.body.answer)),
+      String(sent.body.answer).replace(/\n/g, ' ').slice(0, 54));
 
     /* ---- the other ways of saying where ---- */
     const places = [

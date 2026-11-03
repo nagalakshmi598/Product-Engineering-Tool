@@ -100,8 +100,15 @@ Dashboard
   Scenarios and documents are separate jobs. *Write scenarios for this* drafts and nothing
   else — an attached write-up is the source it drafts from, not a document to put on the shelf,
   and the reply says so. *Create a document for this* writes the document and stops; it does not
-  draft scenarios or offer to. Asking for both in one breath — *upload this document and write
-  test scenarios* — still does both, because that is what it says.
+  draft scenarios or offer to, and filing a write-up does not either. Asking for both in one
+  breath — *upload this document and write test scenarios* — still does both, because that is
+  what it says.
+
+  A functionality described in the chat is covered the same way a write-up is: statement by
+  statement, the whole of it. The description is the subject even when a write-up on the shelf
+  shares words with it, and the words the description happens to use — *listed*, *shows*, *the
+  reason* — do not turn the request into a question. If a draft comes back as prose rather than
+  as a list, it is asked for again as a list rather than lost.
 
   Ask for a number — *write 50+ scenarios*, *at least 30 test cases* — and you get that number.
   Models stop early on a long list however firmly the count is put to them, so the set is

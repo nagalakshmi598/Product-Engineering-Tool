@@ -286,6 +286,24 @@ async function attach(question, names) {
         && (justFile.body.documents || []).length === 1,
       justFile.body.draft ? 'drafted anyway' : 'filed and stopped');
 
+    /* ---- a functionality described in the chat, with no document at all ----
+       It used to get the house dozen off a paragraph naming six behaviours
+       and three messages: most of it untested, and nothing saying so. */
+    const described = await ask('write test scenarios for this: when a Slack workspace is '
+      + 'connected, every private channel the admin is not a member of is listed under Needs '
+      + 'Access. The admin joins the channel or marks it skipped. The migration refuses to '
+      + 'start while any channel is unresolved and shows Resolve access to continue.');
+
+    const saw = (described.body.draft ? described.body.draft.scenarios : [])
+      .map((s) => s.scenario).join(' | ');
+
+    record('a described functionality is covered statement by statement',
+      /covered statement by statement/.test(saw),
+      saw ? saw.slice(-70) : String(described.body.answer).slice(0, 60));
+    record('and nothing is filed for it either',
+      !(described.body.documents || []).length,
+      `${(described.body.documents || []).length} filed`);
+
     /* ---- and asking for both in one breath still does both ---- */
     const bothJobs = await attach('upload this document and write test scenarios for it',
       ['Notion Sprawl - InScope']);

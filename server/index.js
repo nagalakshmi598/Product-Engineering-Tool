@@ -1308,11 +1308,11 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
     };
 
     return res.json({
-      answer: [
-        filed.map((d) => `"${d.name}" is filed under ${where(d.product)}.`).join('\n'),
-        '',
-        'Say the word and I will write test scenarios from what it specifies.',
-      ].join('\n'),
+      /* Asked to keep a write-up, and told where it went. Scenarios are a
+         different job and are not raised here: the offer did nothing on its
+         own, but reading "test scenarios" in the answer to "upload this" is
+         the two jobs running together on the page if not in the code. */
+      answer: filed.map((d) => `"${d.name}" is filed under ${where(d.product)}.`).join('\n'),
       documents: filed,
       attachments: (await attachments.readAll(req.files)).map(({ name, kind, note }) => ({ name, kind, note })),
       model: 'built-in',
