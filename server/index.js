@@ -953,7 +953,7 @@ app.post('/api/assistant/command', wrap(async (req, res) => {
   }
 
   if (command.kind === 'rename-document') {
-    const updated = await store.updateDocument(target.id, { name: tidyName(command.to) });
+    const updated = await store.updateDocument(target.id, { name: tidyName(command.to, { dropTrailingNoise: false }) });
     return res.json({
       done: `The write-up is now called "${updated.name}".`,
       isDocument: true,
@@ -990,7 +990,7 @@ app.post('/api/assistant/command', wrap(async (req, res) => {
   }
 
   if (command.kind === 'rename-set') {
-    const updated = await store.updateEnhancement(target.id, { name: tidyName(command.to) });
+    const updated = await store.updateEnhancement(target.id, { name: tidyName(command.to, { dropTrailingNoise: false }) });
     return res.json({
       done: `Renamed to "${updated.name}".`,
       enhancement: store.summary(updated),
@@ -1483,6 +1483,21 @@ app.post('/api/assistant', chatUpload, wrap(async (req, res) => {
   if (result.draft && written && !result.draft.enhancementId) {
     result.draft.name = written.name;
     if (written.product) result.draft.product = written.product;
+  }
+
+  /* Nothing was filed — scenarios were asked for, so the attachment was read
+     and not kept — so the set takes the name of the file that carried it.
+     What is worked out from the sentence is a last resort: "Write test
+     scenarios for this" and "Unknown" are both names nobody can find again,
+     and the file was called something. */
+  if (result.draft && !result.draft.enhancementId && !written) {
+    const carried = read.find((f) => f.kind !== 'video' && f.name);
+    if (carried) {
+      result.draft.name = tidyName(
+        String(carried.name).replace(/\.[A-Za-z0-9]{1,5}$/, '').trim() || carried.name,
+        { dropTrailingNoise: false }
+      );
+    }
   }
 
   /* The same, a set at a time, when several write-ups came in one message:

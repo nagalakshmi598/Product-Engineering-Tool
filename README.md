@@ -91,11 +91,14 @@ Dashboard
   holding only its own scenarios, with a way into every one of them. Add *in one set* to have
   them combined instead.
 
-  A write-up's scenarios go in that write-up's own set, including with a set already open on
-  the screen behind the chat: the page a question is typed on is not what the question is
-  about, and the reply says which set they are going in. Say *add them to this set* to put
-  them on the end of the open one instead. Asking for more scenarios without naming or
-  attaching a write-up still adds them to the set you are looking at.
+  Anything attached to a message gets its own set, including with a set already open on the
+  screen behind the chat, and whether or not the file reads as a write-up — a thin PDF or a
+  spreadsheet counts the same, and the set takes the file's name. The page a question is typed
+  on is not what the question is about, and the reply says which set the scenarios are going
+  in. Say *add them to this set*, *append to it*, *in the same set* to put them on the end of
+  the open one; say *in a new set*, *in a separate set*, *don't add to this set* to be sure
+  they go somewhere new. Asking for more scenarios with nothing attached still adds them to
+  the set you are looking at.
 
   Each set is drafted from its write-up alone and is read statement by statement: every
   behaviour, rule, limit, field, message and exclusion it states gets a scenario, and what it
@@ -123,7 +126,9 @@ Dashboard
   screenshot attached, whichever of the two it shows. With nothing open it asks, and offers
   both sets and write-ups rather than guessing. The sentence it puts to you first says which
   it understood, because a set and the write-up it was drafted from are often called almost
-  the same thing.
+  the same thing. Only the words before *to* or *as* say what is being renamed; the new name
+  is taken whole, so *rename it to Gmail to Gmail migration scenarios* files it under exactly
+  that.
 
   Ask for a number — *write 50+ scenarios*, *at least 30 test cases* — and you get that number.
   Models stop early on a long list however firmly the count is put to them, so the set is

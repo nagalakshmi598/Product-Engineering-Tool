@@ -46,14 +46,23 @@ function spacing(text) {
 
 /**
  * @param {string} raw the name as it was given
+ * @param {object} [options]
+ * @param {boolean} [options.dropTrailingNoise] false keeps a trailing
+ *   "scenarios". The word is noise on a name taken off a filename or a
+ *   model's heading, which is where most of them come from. It is not noise
+ *   when someone has typed the name out: asked to rename a set to "Gmail to
+ *   Gmail migration scenarios", the tool called it "Gmail to Gmail migration"
+ *   and left the person looking at a name they had not asked for.
  * @returns {string} the same name, with what is wrong put right
  */
-function tidyName(raw) {
+function tidyName(raw, { dropTrailingNoise = true } = {}) {
   let name = spacing(raw);
   if (!name) return '';
 
   const withoutNoise = spacing(name.replace(TRAILING_NOISE, ''));
-  if (withoutNoise.split(' ').filter(Boolean).length >= KEEP_AT_LEAST) name = withoutNoise;
+  if (dropTrailingNoise && withoutNoise.split(' ').filter(Boolean).length >= KEEP_AT_LEAST) {
+    name = withoutNoise;
+  }
 
   /* Product names, whatever case they were typed in. Word boundaries on both
      sides, so "Teams" in "Teamwork" is left alone. */

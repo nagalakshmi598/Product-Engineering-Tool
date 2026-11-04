@@ -2204,16 +2204,36 @@ const ONTO_THE_OPEN_SET = new RegExp(
   '\\b(?:add|append|put|include|file|save|keep|stick)\\b'
     + '(?:\\s+(?:them|these|those|it|this|that|all|the|a|an|new|more|rest|ones?'
       + '|scenarios?|sceanrios?|cases?|also|too|as\\s+well))*'
-    + '\\s*\\b(?:to|in|into|under|onto|on|at)\\s+'
-    + '(?:the\\s+)?(?:this|that|same|current|open|existing|end\\s+of)\\b'
-  + '|\\b(?:continue|carry\\s+on\\s+(?:with|in)|add\\s+to)\\s+'
-    + '(?:this|the|that)\\s+(?:set|list|enhancement)\\b'
-  + '|\\b(?:same|this|current|open|existing)\\s+(?:set|list|enhancement)\\b',
+    + '\\s*\\b(?:to|in|into|under|onto|on|at|here|below|above)\\b'
+    + '(?:\\s+(?:the\\s+)?(?:this|that|same|current|open|existing|end\\s+of|one))?'
+  + '|\\b(?:continue|carry\\s+on\\s+(?:with|in)|add\\s+to|append\\s+to)\\s+'
+    + '(?:this|the|that|it)\\b'
+  + '|\\b(?:same|this|current|open|existing)\\s+(?:set|list|enhancement)\\b'
+  + '|\\bin\\s+(?:this|the\\s+(?:open|current|same))\\s+one\\b',
   'i'
 );
 
 function ontoTheOpenSet(q) {
   return ONTO_THE_OPEN_SET.test(String(q || ''));
+}
+
+/* And the words for the opposite, said outright. "Separately" is already
+   read elsewhere and means something wider — a set per write-up — so these
+   are kept apart from it: they say only that the open set is not where
+   these belong. */
+const ITS_OWN_SET = new RegExp(
+  '\\b(?:in|as|into|under|to)\\s+(?:a\\s+|an\\s+|its\\s+|their\\s+|the\\s+)?'
+    + '(?:new|another|different|fresh|separate|seperate|own|other)\\s+'
+    + '(?:set|list|enhancement|card|one)\\b'
+  + '|\\b(?:do\\s*n[o\']?t|dont|never|do\\s+not)\\s+'
+    + '(?:\\w+\\s+){0,3}?(?:add|put|include|append|merge|mix|combine|club)\\b'
+  + '|\\bnot\\s+(?:in|into|on|to)\\s+(?:this|the\\s+(?:open|current|same|existing))\\b'
+  + '|\\b(?:new|another|separate|seperate|different)\\s+(?:set|enhancement)\\b',
+  'i'
+);
+
+function wantsItsOwnSet(q) {
+  return ITS_OWN_SET.test(String(q || ''));
 }
 
 /* Two names for the same set, spelling and file extension aside. A write-up
@@ -2402,11 +2422,19 @@ async function askAssistant({
    * message asks for that — or when the write-up is the one that set was
    * drafted from in the first place, where a second set of the same name
    * would be the wrong answer twice. */
-  const keepsTheOpenSet = (writeUp) => Boolean(
-    openEnhancement
-      && !wantsThemApart(text)
-      && (ontoTheOpenSet(text) || sameSet(openEnhancement.name, writeUp && writeUp.name))
-  );
+  /* And anything handed over with the message is something else, whether or
+     not it reads as a write-up. A PDF that scans to nothing, a spreadsheet,
+     a screenshot — the general drafting path below took those and put their
+     scenarios on the end of the open set, which is the same complaint again
+     by a different route. A message that brings its own material is about
+     that material. */
+  const keepsTheOpenSet = (writeUp) => {
+    if (!openEnhancement) return false;
+    if (wantsThemApart(text) || wantsItsOwnSet(text)) return false;
+    if (ontoTheOpenSet(text)) return true;
+    if (writeUp && sameSet(openEnhancement.name, writeUp.name)) return true;
+    return !files.length;
+  };
 
   if (justTheOne) {
     const written = await draftPerWriteUp([justTheOne], {
@@ -2576,9 +2604,11 @@ async function askAssistant({
           provider,
           draft: {
             feature: 'the uploaded write-ups',
-            name: openEnhancement ? openEnhancement.name : `${label ? label.label : 'Uploaded'} write-ups`,
+            name: keepsTheOpenSet(null)
+              ? openEnhancement.name
+              : `${label ? label.label : 'Uploaded'} write-ups`,
             product,
-            enhancementId: openEnhancement ? openEnhancement.id : null,
+            enhancementId: keepsTheOpenSet(null) ? openEnhancement.id : null,
             scenarios: everything,
             save: wantsSaved(text),
           },
@@ -2679,6 +2709,13 @@ async function askAssistant({
       }
     }
 
+    /* A set open behind the chat and these going somewhere else: say so,
+       because the one on the screen is the obvious guess otherwise. */
+    if (scenarios.length && openEnhancement && !keepsTheOpenSet(null)) {
+      full += `\n\nThese go in a set of their own, not on the end of `
+        + `"${openEnhancement.name}". Say "add them to this set" if you want them there.`;
+    }
+
     return {
       answer: full,
       model,
@@ -2688,12 +2725,12 @@ async function askAssistant({
         /* A write-up named in the question has already named the set:
            "Egnyte - Content Sprawl Scope" beats anything worked out from the
            sentence that asked for it, and beats "Unknown" by a mile. */
-        name: openEnhancement
+        name: keepsTheOpenSet(null)
           ? openEnhancement.name
           : ((scope.named && scope.list.length === 1 && scope.list[0].name)
             || titleFor(featureOf(text.toLowerCase()), scenarios)),
         product: openEnhancement ? openEnhancement.product : guessProduct(text, currentProduct),
-        enhancementId: openEnhancement ? openEnhancement.id : null,
+        enhancementId: keepsTheOpenSet(null) ? openEnhancement.id : null,
         scenarios,
         save: wantsSaved(text),
       } : null,
@@ -2711,4 +2748,4 @@ async function askAssistant({
   }
 }
 
-module.exports = { askAssistant, wantsThemApart, ontoTheOpenSet, writeUpsNamed, justFileIt, scenariosOnly, productSaidOutright, buildContext, parseDraft, howManyAsked, guessProduct, enhancementName, titleFor };
+module.exports = { askAssistant, wantsThemApart, ontoTheOpenSet, wantsItsOwnSet, writeUpsNamed, justFileIt, scenariosOnly, productSaidOutright, buildContext, parseDraft, howManyAsked, guessProduct, enhancementName, titleFor };

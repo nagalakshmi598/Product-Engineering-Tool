@@ -261,6 +261,21 @@ const sets = async () => (await (await fetch(`${BASE}/api/products/datasprawl/en
         && stillADoc.body.target && stillADoc.body.target.id === alike.document.id,
       stillADoc.body.command ? stillADoc.body.command.kind : String(stillADoc.body.answer).slice(0, 50));
 
+    /* ---- the new name is kept as it was typed ----
+       "Rename it to Gmail to Gmail migration scenarios" filed it as "Gmail
+       to Gmail migration": the word is noise on a name taken off a filename
+       and is not noise when someone has typed it out. */
+    const asTyped = await ask('rename the scenarios title as Gmail to Gmail migration scenarios',
+      { enhancementId: mine.enhancement.id });
+    record('a name ending in "scenarios" is read whole',
+      asTyped.body.command && asTyped.body.command.to === 'Gmail to Gmail migration scenarios',
+      asTyped.body.command ? asTyped.body.command.to : String(asTyped.body.answer).slice(0, 50));
+
+    const keptIt = await run(asTyped.body.command, asTyped.body.target);
+    record('and filed whole',
+      (await sets()).some((s) => s.name === 'Gmail to Gmail migration scenarios'),
+      keptIt.body.done || keptIt.body.error);
+
     /* ---- neither open: it asks, and offers both kinds ---- */
     const neither = await ask('rename the name as Something else');
     record('with neither open it asks which',

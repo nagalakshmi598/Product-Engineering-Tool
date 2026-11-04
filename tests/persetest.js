@@ -352,6 +352,43 @@ async function attach(question, names, openSet) {
       Boolean(onto.body.draft) && onto.body.draft.enhancementId === here,
       onto.body.draft ? (onto.body.draft.enhancementId || 'own set') : 'no draft');
 
+    /* ---- a file too thin to read as a write-up still is not the open set ----
+       A scan that extracts to a line of text, a spreadsheet, a screenshot:
+       those fell past the per-write-up path to the general one, which put
+       their scenarios on the end of whatever was open. Same complaint, other
+       route. */
+    const thin = new FormData();
+    thin.append('question', 'write test scenarios for this');
+    thin.append('history', '[]');
+    thin.append('currentProduct', 'datasprawl');
+    thin.append('currentEnhancement', here);
+    thin.append('files', new Blob(['Private channels need the admin to join.'],
+      { type: 'text/markdown' }), 'thin-note.md');
+    const sparse = await (await fetch(`${BASE}/api/assistant`, { method: 'POST', body: thin })).json();
+
+    record('a file too thin to read as a write-up still gets its own set',
+      Boolean(sparse.draft) && !sparse.draft.enhancementId,
+      sparse.draft ? (sparse.draft.enhancementId ? 'added to the open set' : sparse.draft.name) : 'no draft');
+    record('and is named after the file that carried it',
+      Boolean(sparse.draft) && /thin.note/i.test(String(sparse.draft.name)),
+      sparse.draft ? sparse.draft.name : 'no draft');
+    record('and the reply says they are not going on the end of it',
+      /set of their own/.test(String(sparse.answer)),
+      String(sparse.answer).trim().split('\n').slice(-1)[0].slice(0, 58));
+
+    /* ---- asked for in a new set, in so many words ---- */
+    const freshly = await attach('write test scenarios for this document in a new set',
+      ['Trello Sprawl - InScope'], here);
+    record('"in a new set" is heard',
+      Boolean(freshly.body.draft) && !freshly.body.draft.enhancementId,
+      freshly.body.draft ? (freshly.body.draft.enhancementId || freshly.body.draft.name) : 'no draft');
+
+    /* ---- and more for the set on the screen, with nothing attached ---- */
+    const carryOn = await ask('write 3 more scenarios about archived channels', here);
+    record('more scenarios with nothing attached still go on the open set',
+      Boolean(carryOn.body.draft) && carryOn.body.draft.enhancementId === here,
+      carryOn.body.draft ? (carryOn.body.draft.enhancementId || 'own set') : 'no draft');
+
     /* ---- several named write-ups do not pile into the open set either ---- */
     const several = await ask('write test scenarios for Egnyte - Content Sprawl Scope and '
       + 'Box for Business - Content Sprawl Scope', here);

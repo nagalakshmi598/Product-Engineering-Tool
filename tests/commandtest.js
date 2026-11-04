@@ -79,6 +79,15 @@ const SENTENCES = [
   ['rename the name as Outlook_Shared_Mailboxes_to_Google_Groups_Migration.', 'rename-document',
     (c) => c.nounless === true && c.to === 'Outlook_Shared_Mailboxes_to_Google_Groups_Migration'],
   ['edit the document name to Egnyte sprawl v2', 'rename-document', (c) => !c.nounless],
+
+  /* a new name ending in "scenarios" is a name, not the word for what is
+     being renamed: this came back as a set called "name" */
+  ['rename the name as Gmail to Gmail migration scenarios', 'rename-document',
+    (c) => c.nounless === true && c.name === null && c.to === 'Gmail to Gmail migration scenarios'],
+  ['rename the scenarios title as Gmail to Gmail migration scenarios', 'rename-set',
+    (c) => c.name === null && c.to === 'Gmail to Gmail migration scenarios'],
+  ['rename this to Workspace checks scenarios', 'rename-set',
+    (c) => c.to === 'Workspace checks scenarios'],
   ['remove that section', 'clear-column', (c) => /section/i.test(c.column)],
   ['remove the type column', 'clear-column'],
 

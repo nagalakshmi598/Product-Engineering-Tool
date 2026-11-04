@@ -96,6 +96,16 @@ const MENTIONS_A_DOCUMENT = new RegExp(`\\b${A_DOCUMENT}\\b`, 'i');
    write-up appearing later in the sentence does not pull it back. */
 const MENTIONS_SCENARIOS = /\b(?:scenarios?|rows?|test\s+cases?)\b/i;
 
+/* What is being renamed is said before "to" or "as"; what comes after is the
+   new name, and a new name is often "… migration scenarios". Reading the
+   whole sentence for the word meant "rename the name as Gmail to Gmail
+   migration scenarios" was taken as an instruction about scenarios, fell
+   past the pattern that fits it, and came back as a set called "name". */
+function whatIsBeingChanged(instruction) {
+  const at = /\s\b(?:to|as|into)\s/i.exec(String(instruction || ''));
+  return at ? instruction.slice(0, at.index) : instruction;
+}
+
 /* "Delete the scenarios in the Egnyte document" has the shape of a write-up
    being named — "the <something> document" — but the something is not a name,
    it is the word for the other thing in the tool. A write-up's name may well
@@ -139,7 +149,7 @@ const PATTERNS = [
         + `(?:${A_SET_TITLED}\\s+){1,2}(?:name|title)\\s+(?:to|as|into)\\s+${NAMED}\\s*$`,
       'i'
     ),
-    read: (m) => ({ name: null, to: tidyName(m[1]) }),
+    read: (m) => ({ name: null, to: tidyLabel(m[1]) }),
   },
 
   /* rename the scenarios to Outlook Shared Mailboxes */
@@ -150,7 +160,7 @@ const PATTERNS = [
         + `${SOME_SCENARIOS}\\s+(?:to|as|into)\\s+${NAMED}\\s*$`,
       'i'
     ),
-    read: (m) => ({ name: null, to: tidyName(m[1]) }),
+    read: (m) => ({ name: null, to: tidyLabel(m[1]) }),
   },
 
   /* delete the Outlook Shared Mailboxes document */
@@ -300,7 +310,7 @@ const PATTERNS = [
   {
     kind: 'rename-set',
     re: /\brename\s+(?:this|it|the\s+set|the\s+enhancement|(?:the\s+)?["'“]?(.+?)["'”]?)\s+(?:to|as)\s+["'“]?(.+?)["'”]?\s*$/i,
-    read: (m) => ({ name: m[1] ? namedOrOpen(m[1]) : null, to: tidyName(m[2]) }),
+    read: (m) => ({ name: m[1] ? namedOrOpen(m[1]) : null, to: tidyLabel(m[2]) }),
   },
 
   /* empty the Section column — before the catch-all below, which would read
@@ -407,8 +417,9 @@ function parseCommand(question) {
     /* The word decides, the other way round as well: an instruction that
        says scenarios is not a write-up being renamed, whatever a write-up
        on the shelf happens to be called. */
-    if (pattern.kind === 'rename-document' && MENTIONS_SCENARIOS.test(instruction)
-      && !MENTIONS_A_DOCUMENT.test(instruction)) continue;
+    if (pattern.kind === 'rename-document'
+      && MENTIONS_SCENARIOS.test(whatIsBeingChanged(instruction))
+      && !MENTIONS_A_DOCUMENT.test(whatIsBeingChanged(instruction))) continue;
 
     if (pattern.kind === 'edit-scenario' && !read.text) continue;
 
