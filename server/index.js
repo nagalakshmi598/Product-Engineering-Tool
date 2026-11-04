@@ -666,8 +666,31 @@ async function enhancementFor(product, name) {
   return bestScore >= 0.75 ? store.getEnhancement(best.id) : null;
 }
 
+/**
+ * A name no set under this product is using yet.
+ *
+ * Two documents can be called almost the same thing — an in-scope sheet and
+ * an out-of-scope sheet for the same migration, the same sheet reissued —
+ * and their scenarios are still two different sets. Rather than fold the
+ * second into the first, it is filed beside it and numbered, so both are on
+ * the page and either can be renamed afterwards.
+ */
+async function aNameOfItsOwn(product, name) {
+  const taken = new Set((await store.listEnhancements(product))
+    .map((e) => String(e.name || '').trim().toLowerCase()));
+
+  const wanted = String(name || '').trim();
+  if (!taken.has(wanted.toLowerCase())) return wanted;
+
+  for (let n = 2; n <= 50; n += 1) {
+    const tried = `${wanted} (${n})`;
+    if (!taken.has(tried.toLowerCase())) return tried;
+  }
+  return `${wanted} (${Date.now()})`;
+}
+
 app.post('/api/assistant/scenarios', wrap(async (req, res) => {
-  const { product, name, scenarios, description, enhancementId } = req.body || {};
+  const { product, name, scenarios, description, enhancementId, ownSet } = req.body || {};
 
   /* Naming a set outright is how the assistant carries on one already open:
      the rows go on the end of it, whatever the drafted name turned out to be. */
@@ -714,7 +737,11 @@ app.post('/api/assistant/scenarios', wrap(async (req, res) => {
   if (rows.some((r) => r.extra.Type)) extraColumns.push('Type');
   if (rows.some((r) => r.extra.Section)) extraColumns.push('Section');
 
-  const existing = continuing || (await enhancementFor(product, name));
+  /* Scenarios drafted from something that arrived with the message are that
+     material's own set. Matching them to an existing set by name — which is
+     how a second upload used to land on the end of the first — would undo
+     the decision the assistant already made and said out loud. */
+  const existing = continuing || (ownSet ? null : await enhancementFor(product, name));
   const { kept, skipped } = withoutDuplicates(rows, existing ? existing.scenarios : []);
 
   if (existing) {
@@ -745,16 +772,27 @@ app.post('/api/assistant/scenarios', wrap(async (req, res) => {
     });
   }
 
+  const asked = tidyName(name);
+  const given = await aNameOfItsOwn(product, asked);
+
   const created = await store.createEnhancement({
     product,
-    name: tidyName(name),
+    name: given,
     description: (description || '').trim(),
     sourceFile: 'Assistant',
     scenarios: kept,
     extraColumns,
   });
 
-  res.status(201).json({ enhancement: store.summary(created), added: kept.length, skipped, appended: false });
+  res.status(201).json({
+    enhancement: store.summary(created),
+    added: kept.length,
+    skipped,
+    appended: false,
+    /* Said rather than left to be spotted: a set of that name was already
+       there, and this one is beside it, not inside it. */
+    besideOne: given === asked ? null : asked,
+  });
 }));
 
 /* ---------------- changes asked for in the chat ----------------

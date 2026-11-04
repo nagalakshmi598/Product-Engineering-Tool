@@ -2570,7 +2570,12 @@ async function saveDrafts(drafts) {
       const result = await api('/api/assistant/scenarios', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ product: draft.product, name: draft.name, scenarios: draft.scenarios }),
+        body: JSON.stringify({
+          product: draft.product,
+          name: draft.name,
+          scenarios: draft.scenarios,
+          ownSet: draft.ownSet || undefined,
+        }),
       });
       done.push(result);
     } catch (err) {
@@ -2614,6 +2619,9 @@ async function saveDraft(draft, button) {
         name: draft.name,
         scenarios: draft.scenarios,
         enhancementId: draft.enhancementId || undefined,
+        /* Drafted from something attached to the message: a set of its own,
+           not the end of whichever set is named something like it. */
+        ownSet: draft.ownSet || undefined,
       }),
     });
 
@@ -2628,6 +2636,11 @@ async function saveDraft(draft, button) {
         : `Nothing new to add — "${result.enhancement.name}" already covers all ${plural(result.skipped, 'scenario')}.`);
     } else {
       botBubble('bot', `${plural(result.added, 'scenario')} ${result.appended ? 'added to' : 'saved as'} "${result.enhancement.name}" under ${where} Migration Scenarios${numbers}.`);
+    }
+
+    if (result.besideOne) {
+      botBubble('bot', `There was already a set called "${result.besideOne}". `
+        + 'This one is beside it, not inside it — rename either from the chat.');
     }
 
     if (result.skipped && result.added) {

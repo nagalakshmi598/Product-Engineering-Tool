@@ -165,6 +165,48 @@ const doc = async (id) => (await (await fetch(`${BASE}/api/documents/${id}`)).js
       again.body.command && again.body.command.again === true && again.body.command.confirm === true,
       String(again.body.answer).slice(0, 62));
 
+    /* ---- 5b. two uploads, two sets ----
+       The assistant said the scenarios were going to a set of their own, and
+       then the save matched them to a set of a similar name and put them on
+       the end of it: twenty-four scenarios from a freshly uploaded document
+       numbered 35-58 under a set uploaded hours earlier, six of them dropped
+       as duplicates of a different document's work. */
+    const file = async (name, body, extra = {}) => (await (await fetch(`${BASE}/api/assistant/scenarios`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product: 'email', name, scenarios: body, ...extra }),
+    })).json());
+
+    const five = (word) => Array.from({ length: 5 }, (_, i) => ({
+      scenario: `Verify that ${word} item ${i + 1} is migrated.`, type: 'Positive',
+    }));
+
+    const first = await file('Gmail to Outlook Inscope_Scenarios', five('inscope'));
+    record('an uploaded document is filed as its own set',
+      first.appended === false && first.added === 5, String(first.error || first.added));
+
+    const loose = await file('Gmail to Outlook Inscope Scenarios', five('restated'));
+    record('a draft with no material behind it still joins the set it belongs to',
+      loose.appended === true && loose.enhancement.id === first.enhancement.id,
+      loose.appended ? 'appended' : 'started a rival set');
+
+    const second = await file('Gmail to Outlook Inscope_Scenarios', five('outscope'), { ownSet: true });
+    record('a second upload of a like name is filed beside it, not inside it',
+      second.appended === false && second.enhancement.id !== first.enhancement.id,
+      second.appended ? `added to ${second.enhancement.name}` : second.enhancement.name);
+    record('and is given a name of its own',
+      second.enhancement.name === 'Gmail to Outlook Inscope_Scenarios (2)'
+        && second.besideOne === 'Gmail to Outlook Inscope_Scenarios',
+      second.enhancement.name);
+
+    const repeat = await file('Gmail to Outlook Inscope_Scenarios', five('inscope'), { ownSet: true });
+    record('and nothing is dropped as a duplicate of another document\'s scenarios',
+      repeat.added === 5 && repeat.skipped === 0, `${repeat.added} kept, ${repeat.skipped} skipped`);
+
+    const sets = (await (await fetch(`${BASE}/api/products/email/enhancements`)).json()).enhancements || [];
+    record('three uploads, three sets',
+      sets.filter((e) => /Gmail to Outlook Inscope/.test(e.name)).length === 3,
+      sets.map((e) => e.name).join(' | ').slice(0, 70));
+
     /* ---- 6. delete it ---- */
     const dropped = await instruct('delete the Egnyte Sprawl Scope document');
     record('the bot deletes a write-up',

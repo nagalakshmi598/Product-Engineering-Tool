@@ -98,7 +98,19 @@ Dashboard
   in. Say *add them to this set*, *append to it*, *in the same set* to put them on the end of
   the open one; say *in a new set*, *in a separate set*, *don't add to this set* to be sure
   they go somewhere new. Asking for more scenarios with nothing attached still adds them to
-  the set you are looking at.
+  the set you are looking at. A write-up named off the shelf counts as material of its own
+  too: *write scenarios for the out-of-scope write-up* is about that write-up, not about the
+  set on the screen.
+
+  Its own set means its own set at filing as well. Saving a draft normally looks for a set of
+  the same or a close name and adds to that one, which is how a second document's scenarios
+  used to arrive on the end of the first — an in-scope sheet and an out-of-scope sheet for the
+  same migration are named almost alike, and the scenarios were folded together, some of them
+  dropped as duplicates of a different document's work. A draft taken from something that came
+  with the message carries the decision with it and is filed on its own, beside a set of that
+  name rather than inside it, numbered — *Gmail to Outlook Inscope_Scenarios (2)* — and the
+  chat says so, so either can be renamed. Attaching the same document again while its set is
+  open still tops that set up.
 
   Each set is drafted from its write-up alone and is read statement by statement: every
   behaviour, rule, limit, field, message and exclusion it states gets a scenario, and what it

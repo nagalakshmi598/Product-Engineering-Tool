@@ -2451,8 +2451,28 @@ async function askAssistant({
     if (wantsThemApart(text) || wantsItsOwnSet(text)) return false;
     if (ontoTheOpenSet(text)) return true;
     if (writeUp && sameSet(openEnhancement.name, writeUp.name)) return true;
+    /* A write-up the message is about is material of its own whether it came
+       attached or was already on the shelf: "write scenarios for the Gmail
+       to Outlook out-of-scope write-up" is about that write-up, not about
+       whichever set the chat happens to be open behind. Only a message with
+       no material behind it at all — "write 3 more about archived channels"
+       — is about the set on the screen. */
+    if (writeUp) return false;
     return !files.length;
   };
+
+  /* Saying which set they go to was only half of it. The save that follows
+     looks for a set of a similar name and adds to that one, which is how
+     twenty-four scenarios drafted from a freshly uploaded document — said in
+     the reply to be going to a set of their own — arrived numbered 35–58 on
+     the end of a set uploaded hours earlier, six of them dropped as
+     duplicates of scenarios from a different document entirely.
+     So a draft taken from material that came with the message carries the
+     decision with it: these are their own set, do not go looking for one
+     with a name like theirs. Two documents named alike are still two
+     documents, and their scenarios are not interchangeable. */
+  const ownsItsSet = (writeUp) => (Boolean(files.length) || Boolean(writeUp))
+    && !keepsTheOpenSet(writeUp);
 
   if (justTheOne) {
     const written = await draftPerWriteUp([justTheOne], {
@@ -2496,6 +2516,7 @@ async function askAssistant({
             ? openEnhancement.product
             : (justTheOne.product || guessProduct(text, currentProduct)),
           enhancementId: carryOn ? openEnhancement.id : null,
+          ownSet: ownsItsSet(justTheOne),
           scenarios: set.scenarios,
           save: wantsSaved(text),
         },
@@ -2548,6 +2569,7 @@ async function askAssistant({
           name: titleOf(set.name),
           product,
           enhancementId: null,
+          ownSet: ownsItsSet(set),
           scenarios: set.scenarios,
           save: wantsSaved(text),
         })),
@@ -2627,6 +2649,7 @@ async function askAssistant({
               : `${label ? label.label : 'Uploaded'} write-ups`,
             product,
             enhancementId: keepsTheOpenSet(null) ? openEnhancement.id : null,
+            ownSet: ownsItsSet(null),
             scenarios: everything,
             save: wantsSaved(text),
           },
@@ -2729,7 +2752,7 @@ async function askAssistant({
 
     /* A set open behind the chat and these going somewhere else: say so,
        because the one on the screen is the obvious guess otherwise. */
-    if (scenarios.length && openEnhancement && !keepsTheOpenSet(null)) {
+    if (scenarios.length && openEnhancement && !keepsTheOpenSet(theNamedOne)) {
       full += `\n\nThese go in a set of their own, not on the end of `
         + `"${openEnhancement.name}". Say "add them to this set" if you want them there.`;
     }
@@ -2743,12 +2766,13 @@ async function askAssistant({
         /* A write-up named in the question has already named the set:
            "Egnyte - Content Sprawl Scope" beats anything worked out from the
            sentence that asked for it, and beats "Unknown" by a mile. */
-        name: keepsTheOpenSet(null)
+        name: keepsTheOpenSet(theNamedOne)
           ? openEnhancement.name
-          : ((scope.named && scope.list.length === 1 && scope.list[0].name)
+          : ((theNamedOne && theNamedOne.name)
             || titleFor(featureOf(text.toLowerCase()), scenarios)),
         product: openEnhancement ? openEnhancement.product : guessProduct(text, currentProduct),
-        enhancementId: keepsTheOpenSet(null) ? openEnhancement.id : null,
+        enhancementId: keepsTheOpenSet(theNamedOne) ? openEnhancement.id : null,
+        ownSet: ownsItsSet(theNamedOne),
         scenarios,
         save: wantsSaved(text),
       } : null,

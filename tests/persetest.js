@@ -340,6 +340,12 @@ async function attach(question, names, openSet) {
     record('named after the write-up, not the set on the screen',
       Boolean(elsewhere.body.draft) && elsewhere.body.draft.name === 'Confluence Sprawl - InScope',
       elsewhere.body.draft ? elsewhere.body.draft.name : '');
+    /* Saying so in the reply was not enough: the save went looking for a set
+       of a similar name and added to that one instead. The draft carries the
+       decision so the filing cannot overturn it. */
+    record('and the draft is marked as its own set, so the save cannot merge it',
+      Boolean(elsewhere.body.draft) && elsewhere.body.draft.ownSet === true,
+      elsewhere.body.draft ? String(elsewhere.body.draft.ownSet) : 'no draft');
     record('and the reply says which set they go in',
       /own set/.test(String(elsewhere.body.answer))
         && /Mail_Gmail-to-Gmail_In-Scope_Scenarios/.test(String(elsewhere.body.answer)),
@@ -351,6 +357,9 @@ async function attach(question, names, openSet) {
     record('"add them to this set" still adds them to it',
       Boolean(onto.body.draft) && onto.body.draft.enhancementId === here,
       onto.body.draft ? (onto.body.draft.enhancementId || 'own set') : 'no draft');
+    record('and is not marked as its own set',
+      Boolean(onto.body.draft) && onto.body.draft.ownSet !== true,
+      onto.body.draft ? String(onto.body.draft.ownSet) : 'no draft');
 
     /* ---- a file too thin to read as a write-up still is not the open set ----
        A scan that extracts to a line of text, a spreadsheet, a screenshot:
@@ -372,6 +381,9 @@ async function attach(question, names, openSet) {
     record('and is named after the file that carried it',
       Boolean(sparse.draft) && /thin.note/i.test(String(sparse.draft.name)),
       sparse.draft ? sparse.draft.name : 'no draft');
+    record('and it too is marked as its own set',
+      Boolean(sparse.draft) && sparse.draft.ownSet === true,
+      sparse.draft ? String(sparse.draft.ownSet) : 'no draft');
     record('and the reply says they are not going on the end of it',
       /set of their own/.test(String(sparse.answer)),
       String(sparse.answer).trim().split('\n').slice(-1)[0].slice(0, 58));
