@@ -116,8 +116,11 @@ Dashboard
   A functionality described in the chat is covered the same way a write-up is: statement by
   statement, the whole of it. The description is the subject even when a write-up on the shelf
   shares words with it, and the words the description happens to use — *listed*, *shows*, *the
-  reason* — do not turn the request into a question. If a draft comes back as prose rather than
-  as a list, it is asked for again as a list rather than lost.
+  reason* — do not turn the request into a question. Neither do the words that say how to write
+  them: *in detail*, *detailed*, *clearly*, *for every feature* are how the scenarios are to be
+  written, not a request for prose about the document, wherever in the sentence the asking
+  happens. If a draft comes back as prose rather than as a list, it is asked for again as a
+  list rather than lost.
 
   Renaming says what kind of thing it is about. *Rename the scenarios title as X*, *change the
   enhancement name to X* and *rename the scenarios to X* rename the set; *rename the document

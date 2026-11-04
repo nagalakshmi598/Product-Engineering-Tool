@@ -561,15 +561,33 @@ function isQuestion(q) {
  * it is, whatever words the description after it happens to use. "Why did
  * you write these scenarios" does not open that way and is still a question.
  */
+/* Asking, in so many words, for scenarios to be written: a verb for writing,
+   then the word for what is to be written, with nothing but qualifiers in
+   between. The qualifiers are listed rather than left open, so that "write
+   up what the document says about scenarios" is not read as this. */
+const A_DRAFT_ASK = '(?:write|draft|generate|create|prepare|produce|make|give|provide)\\b'
+  + '(?:\\s+(?:me|us|a|an|the|all|some|more|new|out|detailed|detail|clear|clearly'
+    + '|proper|properly|complete|full|in|up\\s*to|upto|at\\s+least|minimum|of|for'
+    + '|every|each|feature|features|\\d{1,3}\\+?|,)){0,10}'
+  + '\\s*(?:test\\s+)?(?:scenarios?|sceanrios?|test\\s*cases?|cases?)\\b';
+
 const OPENS_WITH_A_DRAFT_ASK = new RegExp(
   '^\\s*(?:please\\s+|hi\\s+|hey\\s+|ok(?:ay)?\\s+|now\\s+|also\\s+|and\\s+|then\\s+'
     + '|can\\s+you\\s+|could\\s+you\\s+|you\\s+(?:need\\s+to\\s+|should\\s+|can\\s+)?)*'
-    + '(?:write|draft|generate|create|prepare|produce|make|give|provide)\\b'
-    + '(?:\\s+(?:me|us|a|an|the|all|some|more|new|out|detailed|detail|clear|clearly'
-      + '|proper|properly|complete|full|up\\s*to|upto|at\\s+least|minimum|of|\\d{1,3}\\+?)){0,8}'
-    + '\\s*(?:test\\s+)?(?:scenarios?|sceanrios?|test\\s*cases?|cases?)\\b',
+    + A_DRAFT_ASK,
   'i'
 );
+
+/* The same ask, wherever in the message it happens.
+ *
+ * "In email for this document write scenarios more in detail scenarios for
+ * every feature write clearly" asks for scenarios twice and never once asks
+ * for prose — but "in detail" is also how someone asks to have a write-up
+ * described, and that reading won, so no scenarios were written at all and
+ * the reply pointed at a document on the shelf that had not been mentioned.
+ * Where the sentence asks for scenarios, "in detail" and "clearly" say how
+ * to write them. */
+const ASKS_FOR_A_DRAFT = new RegExp(`\\b${A_DRAFT_ASK}`, 'i');
 
 /** Did the user ask, in so many words, for scenarios? */
 function wantsScenarios(q) {
@@ -2306,7 +2324,7 @@ async function askAssistant({
   /* Asked for scenarios at the front of the message, so the message is a
      request for scenarios — "recorded with the reason Skipped by admin" is
      the feature talking, not somebody asking why something happened. */
-  const wantsAnAccount = !OPENS_WITH_A_DRAFT_ASK.test(text)
+  const wantsAnAccount = !ASKS_FOR_A_DRAFT.test(text)
     && (ASKS_FOR_AN_ACCOUNT.test(text) || REASONING.test(text));
 
   const drafting = !wantsAnAccount

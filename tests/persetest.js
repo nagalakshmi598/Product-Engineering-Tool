@@ -389,6 +389,75 @@ async function attach(question, names, openSet) {
       Boolean(carryOn.body.draft) && carryOn.body.draft.enhancementId === here,
       carryOn.body.draft ? (carryOn.body.draft.enhancementId || 'own set') : 'no draft');
 
+    /* ---- "in detail" is how to write them, not a request for prose ----
+       "In email for this document write scenarios more in detail scenarios
+       for every feature write clearly" asked twice for scenarios and got
+       none: "in detail" is also how someone asks to have a write-up
+       described, that reading won, and the reply pointed at a document on
+       the shelf that had never been mentioned. */
+    const inDetail = await attach('In email for this document write scenarios more in detail '
+      + 'scenarios for every feature write clearly', ['Gmail to Outlook Inscope_Scenarios']);
+
+    record('"in detail" after a draft ask still drafts',
+      Boolean(inDetail.body.draft) && inDetail.body.draft.scenarios.length > 0,
+      inDetail.body.draft
+        ? `${inDetail.body.draft.scenarios.length} scenarios`
+        : String(inDetail.body.answer).slice(0, 58));
+    record('and drafts from the one attached, not the shelf',
+      Boolean(inDetail.body.draft) && inDetail.body.draft.name === 'Gmail to Outlook Inscope_Scenarios',
+      inDetail.body.draft ? inDetail.body.draft.name : 'no draft');
+    record('still statement by statement',
+      Boolean(inDetail.body.draft)
+        && /read statement by statement/.test(inDetail.body.draft.scenarios.map((s) => s.scenario).join(' ')),
+      '');
+
+    /* And an account asked for is still an account, with no draft ask in it. */
+    const account = await attach('describe this document in detail', ['Figma Sprawl - InScope']);
+    record('asking for an account still gives an account',
+      !account.body.draft && !(account.body.drafts || []).length,
+      account.body.draft ? 'drafted anyway' : 'no draft');
+
+    /* ---- a real .docx, the way they arrive ---- */
+    const docx = await (async () => {
+      const JSZip = require('jszip');
+      const zip = new JSZip();
+      zip.file('[Content_Types].xml',
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        + '<Default Extension="xml" ContentType="application/xml"/>'
+        + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        + '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument'
+        + '.wordprocessingml.document.main+xml"/></Types>');
+      zip.folder('_rels').file('.rels',
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+        + '/officeDocument" Target="word/document.xml"/></Relationships>');
+      zip.folder('word').file('document.xml',
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        + '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'
+        + body('Gmail to Outlook Inscope').split('\n')
+          .map((line) => `<w:p><w:r><w:t xml:space="preserve">${line}</w:t></w:r></w:p>`).join('')
+        + '</w:body></w:document>');
+      return zip.generateAsync({ type: 'nodebuffer' });
+    })();
+
+    const asWord = new FormData();
+    asWord.append('question', 'for this document write scenarios in detail for every feature');
+    asWord.append('history', '[]');
+    asWord.append('currentProduct', 'datasprawl');
+    asWord.append('files', new Blob([docx], {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    }), 'Gmail to Outlook Inscope_Scenarios.docx');
+    const word = await (await fetch(`${BASE}/api/assistant`, { method: 'POST', body: asWord })).json();
+
+    record('a .docx is read and drafted from',
+      Boolean(word.draft) && word.draft.scenarios.length > 0,
+      word.draft ? `${word.draft.scenarios.length} scenarios` : String(word.answer).slice(0, 58));
+    record('and its set takes the file\'s name without the extension',
+      Boolean(word.draft) && word.draft.name === 'Gmail to Outlook Inscope_Scenarios',
+      word.draft ? word.draft.name : 'no draft');
+
     /* ---- several named write-ups do not pile into the open set either ---- */
     const several = await ask('write test scenarios for Egnyte - Content Sprawl Scope and '
       + 'Box for Business - Content Sprawl Scope', here);
