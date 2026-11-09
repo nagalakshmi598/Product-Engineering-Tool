@@ -145,6 +145,16 @@ Dashboard
   is taken whole, so *rename it to Gmail to Gmail migration scenarios* files it under exactly
   that.
 
+  Rows are picked out by number, however the numbers are written. *Delete scenarios 4, 5 and
+  6*, *delete 4 5 6*, *delete scenario no 4,5*, *delete #4 #5*, *delete 35 to 58*, *delete
+  12-15 and 20* all name the same kind of thing, and every number given is taken — a space
+  between them used to end the list at the first, so three numbers deleted one row and said
+  so. A number on its own — *delete 2* — is a row, not a set of that name; a name that merely
+  starts with one — *delete 2024 report* — is still a name. The same goes for marking: *mark
+  12 14 16 as failed*. What is about to happen is put to you first, with runs kept as runs —
+  *Delete scenarios 35–58* rather than twenty-four numbers spelled out — and the rows are
+  taken from the highest number down, so renumbering cannot shift the ones still to go.
+
   Ask for a number — *write 50+ scenarios*, *at least 30 test cases* — and you get that number.
   Models stop early on a long list however firmly the count is put to them, so the set is
   counted when it comes back and the shortfall asked for again, round by round, until it is

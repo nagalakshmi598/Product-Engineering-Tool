@@ -22,25 +22,45 @@ const STATUS_WORDS = {
   pending: 'pending', 'not run': 'pending', 'not tested': 'pending', untested: 'pending',
 };
 
-/* "42", "42 and 43", "42, 43 and 44", "42-45" */
-const NUMBER_LIST = '(\\d+(?:\\s*(?:,|and|&|to|-|–)\\s*\\d+)*)';
+/* What a row is called when it is pointed at by its number: "scenario 4",
+   "row 4", "s.no 4", "no. 4", "#4", or nothing at all. */
+const A_ROW_WORD = '(?:scenarios?|sceanrios?|rows?|cases?|items?|lines?'
+  + '|points?|sl\\.?\\s*nos?|s\\.?\\s*nos?|nos?\\.?|numbers?|#)';
+/* Said twice as often as not — "scenario no 4", "row number 4". */
+const A_ROW = `(?:test\\s+)?${A_ROW_WORD}(?:\\s*${A_ROW_WORD})?`;
 
-/** Pull the scenario numbers out of "12, 14 and 16" or "12-15". */
+/* "42", "42 and 43", "42, 43 and 44", "42-45", "42 43 44" — a space is how
+   most people separate them, and it used to end the list at the first one. */
+const NUMBER_LIST = '(\\d+(?:\\s*(?:,|and|&|\\+|#|to|thru|through|till|until|-|–|—)\\s*\\d+|\\s+\\d+)*)';
+
+/**
+ * Pull the scenario numbers out of "12, 14 and 16", "12-15", or "12 14 16".
+ *
+ * Numbers separated by nothing but a space used to come back as the first
+ * one alone: "delete scenario 1 2 3" deleted scenario 1 and said so, and the
+ * other two stayed. The split was on commas and the word "and", and whatever
+ * fell in one piece was read for a single number.
+ */
 function readNumbers(text) {
   const out = new Set();
-  const spans = String(text).split(/\s*(?:,|and|&)\s*/i);
+  const add = (n) => { if (Number.isInteger(n) && n > 0) out.add(n); };
 
-  spans.forEach((span) => {
-    const range = /^\s*(\d+)\s*(?:-|–|to)\s*(\d+)\s*$/.exec(span);
-    if (range) {
-      const from = Number(range[1]);
-      const to = Number(range[2]);
-      if (to - from > 500) return;                   // a typo, not a request
-      for (let n = Math.min(from, to); n <= Math.max(from, to); n += 1) out.add(n);
-      return;
-    }
-    const one = /\d+/.exec(span);
-    if (one) out.add(Number(one[0]));
+  String(text).split(/\s*(?:,|&|\+|\band\b|\bplus\b)\s*/i).forEach((span) => {
+    /* "12-15", "35 to 58": every number between the two ends, and the ends
+       themselves. Taken out of the span so they are not counted again. */
+    const rest = span.replace(
+      /(\d+)\s*(?:-|–|—|\bto\b|\bthru\b|\bthrough\b|\btill\b|\buntil\b)\s*(\d+)/gi,
+      (whole, a, b) => {
+        const from = Number(a);
+        const to = Number(b);
+        if (Math.abs(to - from) > 500) return ' ';   // a typo, not a request
+        for (let n = Math.min(from, to); n <= Math.max(from, to); n += 1) add(n);
+        return ' ';
+      }
+    );
+
+    /* and everything still standing is a number on its own: "1 2 3", "7". */
+    (rest.match(/\d+/g) || []).forEach((d) => add(Number(d)));
   });
 
   return Array.from(out).sort((a, b) => a - b);
@@ -300,7 +320,19 @@ const PATTERNS = [
   {
     kind: 'delete-scenarios',
     re: new RegExp(
-      `\\b(?:delete|remove|drop|get\\s+rid\\s+of)\\s+(?:the\\s+)?(?:test\\s+)?(?:scenarios?|rows?|cases?|numbers?|#)\\s*${NUMBER_LIST}`,
+      `\\b(?:delete|remove|drop|get\\s+rid\\s+of)\\s+(?:the\\s+)?${A_ROW}\\s*${NUMBER_LIST}`,
+      'i'
+    ),
+    read: (m) => ({ snos: readNumbers(m[1]) }),
+  },
+
+  /* delete 12, 14 and 16 — numbers and nothing else, so it cannot be read as
+     the name of a set. "Delete 2024 report" is a name and stays one. */
+  {
+    kind: 'delete-scenarios',
+    re: new RegExp(
+      `^\\s*(?:please\\s+)?(?:delete|remove|drop|get\\s+rid\\s+of)\\s+(?:the\\s+)?${NUMBER_LIST}`
+        + `(?:\\s+${A_ROW}s?)?\\s*\\.?\\s*$`,
       'i'
     ),
     read: (m) => ({ snos: readNumbers(m[1]) }),
@@ -472,7 +504,24 @@ function parseCommand(question) {
 /** What the tool is about to do, in a sentence the person can check. */
 function describeCommand(command, context = {}) {
   const where = context.enhancementName ? ` in "${context.enhancementName}"` : '';
-  const list = (ns) => (ns.length === 1 ? `scenario ${ns[0]}` : `scenarios ${ns.join(', ')}`);
+  /* A run of numbers is put back the way it was asked for: "scenarios 35-58"
+     rather than twenty-four of them spelled out, which is what has to be
+     read and agreed to before a delete happens. */
+  const list = (ns) => {
+    if (ns.length === 1) return `scenario ${ns[0]}`;
+
+    const runs = [];
+    ns.forEach((n) => {
+      const last = runs[runs.length - 1];
+      if (last && n === last[1] + 1) last[1] = n;
+      else runs.push([n, n]);
+    });
+
+    return `scenarios ${runs.map(([a, b]) => {
+      if (a === b) return String(a);
+      return b === a + 1 ? `${a}, ${b}` : `${a}–${b}`;
+    }).join(', ')}`;
+  };
 
   switch (command.kind) {
     case 'set-status':

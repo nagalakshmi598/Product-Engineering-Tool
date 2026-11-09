@@ -56,6 +56,28 @@ const SENTENCES = [
   ['delete the scenarios in the Egnyte document', 'delete-set'],
   ['delete scenarios 4, 5 and 6', 'delete-scenarios', (c) => c.snos.join() === '4,5,6'],
   ['delete scenarios 10-13', 'delete-scenarios', (c) => c.snos.join() === '10,11,12,13'],
+
+  /* every number asked for, not the first one ---------------------------
+     "Delete scenario 1 2 3" took out scenario 1, said one scenario was
+     deleted, and left the other two: a space between numbers ended the
+     list. A number said on its own was not read as a row at all, and went
+     looking for a set of that name instead. */
+  ['delete scenario 1 2 3', 'delete-scenarios', (c) => c.snos.join() === '1,2,3'],
+  ['delete 1 2 3', 'delete-scenarios', (c) => c.snos.join() === '1,2,3'],
+  ['delete 1,2', 'delete-scenarios', (c) => c.snos.join() === '1,2'],
+  ['delete 1, 2 and 5', 'delete-scenarios', (c) => c.snos.join() === '1,2,5'],
+  ['remove 7 8 9', 'delete-scenarios', (c) => c.snos.join() === '7,8,9'],
+  ['delete scenario no 1,2', 'delete-scenarios', (c) => c.snos.join() === '1,2'],
+  ['delete s.no 4 5 6', 'delete-scenarios', (c) => c.snos.join() === '4,5,6'],
+  ['delete #3 #4', 'delete-scenarios', (c) => c.snos.join() === '3,4'],
+  ['delete scenarios 35 to 58', 'delete-scenarios', (c) => c.snos.length === 24],
+  ['delete 12-15 and 20', 'delete-scenarios', (c) => c.snos.join() === '12,13,14,15,20'],
+  ['delete 2', 'delete-scenarios', (c) => c.snos.join() === '2'],
+  ['mark 12 14 16 as failed', 'set-status', (c) => c.snos.join() === '12,14,16'],
+
+  /* and a name that happens to start with a number is still a name */
+  ['delete 2024 report', 'delete-set', (c) => /2024 report/.test(c.name)],
+  ['delete note 1', 'delete-set'],
   ['mark 12 and 14 as failed', 'set-status', (c) => c.status === 'fail' && c.snos.join() === '12,14'],
   ['mark 3 as not run', 'set-status', (c) => c.status === 'pending'],
   ['change scenario 12 to: Verify that the banner is shown', 'edit-scenario',
@@ -140,6 +162,10 @@ SENTENCES.forEach(([said, kind, alsoTrue]) => {
 const SAYS = [
   ['delete the Egnyte document', /Delete the write-up "Egnyte"\. This cannot be undone\./],
   ['delete scenarios 4 and 5', /Delete scenarios 4, 5 in "Open Set"\. This cannot be undone\./],
+  /* a run put back as a run: twenty-four numbers spelled out is not a line
+     anyone reads before agreeing to a delete */
+  ['delete scenarios 35 to 58', /Delete scenarios 35–58 in "Open Set"\. This cannot be undone\./],
+  ['delete 12-15 and 20', /Delete scenarios 12–15, 20 in "Open Set"\. This cannot be undone\./],
   ['remove that section', /Empty the section column in "Open Set", on every row\./],
   ['regenerate test cases', /Write the test cases again for every scenario in "Open Set", replacing/],
   ['generate test cases', /Write test cases for the scenarios in "Open Set" that have none yet\./],
