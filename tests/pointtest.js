@@ -153,6 +153,28 @@ const docs = async () => (await (await fetch(`${BASE}/api/documents`)).json()).d
           .enhancements.some((s) => s.id === pointed.body.target.id),
       pointed.body.target ? pointed.body.target.id : 'nothing');
 
+    /* ---- a picture with nothing in it is not evidence ----
+       A blank one-pixel PNG sent with "delete it" came back as a set picked
+       off the list, with "highlighted with a red box in the screenshot" for
+       a reason — invented, in the sentence meant to be read before agreeing
+       to a delete. Nothing in the picture, nothing to go on: it asks. */
+    const blank = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64'
+    );
+    const nothing = await ask('delete this document', { product: 'datasprawl', shot: blank });
+    record('a picture too small to show anything is not read as pointing',
+      !nothing.body.target && (nothing.body.choices || []).length > 0,
+      nothing.body.target ? `picked ${nothing.body.target.name}` : 'asked which');
+    record('and no reason is invented for it',
+      !/From the screenshot/.test(String(nothing.body.answer)),
+      String(nothing.body.answer).slice(0, 48));
+
+    /* ---- the health check the chat waits on ---- */
+    const beat = await fetch(`${BASE}/api/health`);
+    record('there is something cheap to ask whether the tool is up',
+      beat.status === 204, `status ${beat.status}`);
+
     /* ---- the build stamp, so the page knows it is behind ---- */
     const res = await fetch(`${BASE}/api/products`);
     record('every reply says which build served it',

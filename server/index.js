@@ -180,6 +180,15 @@ function keepOriginal(id, file) {
   return stored;
 }
 
+/* Is the tool answering at all?
+ *
+ * Asked once a second by a chat panel whose message could not be sent, so it
+ * touches nothing and answers with no body. A question typed into a tab left
+ * open after the server was stopped used to come back "the tool is not
+ * responding" and sit there until someone pressed send again at the right
+ * moment; now the panel waits here and sends it the moment this answers. */
+app.get('/api/health', (req, res) => res.status(204).end());
+
 app.get('/api/products', wrap(async (req, res) => {
   res.json({ products: (await store.listProducts()), documentCount: (await store.countDocuments()) });
 }));

@@ -157,8 +157,12 @@ async function api(url, options) {
     /* fetch only rejects when the request never arrived: the server is down,
        or the machine is off the network. The browser's own wording for that
        is "Failed to fetch", which says nothing about what to do. */
-    const offline = `The tool is not responding. It runs on this machine — check the server is still started, then try again.`;
-    throw new Error(offline);
+    const offline = new Error('The tool is not responding. It runs on this machine — '
+      + 'check the server is still started, then try again.');
+    /* Marked, so what asked can tell a tool that is down from one that
+       answered badly, and wait for it rather than giving up. */
+    offline.offline = true;
+    throw offline;
   }
 
   noteTheBuild(res.headers.get('X-Tool-Build'));
@@ -168,6 +172,31 @@ async function api(url, options) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
   return data;
+}
+
+/** Is the tool answering at all? */
+async function toolIsUp() {
+  try {
+    const res = await fetch('/api/health', { cache: 'no-store' });
+    return res.ok || res.status === 204;
+  } catch (err) {
+    return false;
+  }
+}
+
+/**
+ * Wait for the tool to answer again, asking once a second.
+ *
+ * @returns {Promise<boolean>} true once it answers, false if it never did
+ */
+async function waitForTheTool(seconds = 120) {
+  for (let left = seconds; left > 0; left -= 1) {
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((settle) => setTimeout(settle, 1000));
+    // eslint-disable-next-line no-await-in-loop
+    if (await toolIsUp()) return true;
+  }
+  return false;
 }
 
 /**
@@ -2895,6 +2924,9 @@ async function askBot(question) {
   bot.files = [];
   renderBotFiles();
 
+  /* The question to ask again once the tool comes back, if it was down. */
+  let resend = '';
+
   /* Noted before the answer comes back, so that editing this message can put
      the conversation back exactly where it stood when it was asked. */
   const turn = { text, files: sent, historyAt: bot.history.length };
@@ -3030,6 +3062,37 @@ async function askBot(question) {
        already on its way; saying anything about this one would be noise. */
     if (err.abandoned) return;
 
+    /* The tool is not answering — which is not the same as answering badly.
+       If it is genuinely down then the question never reached it and nothing
+       was done, so there is nothing to decide: hold on to the message, wait
+       for the tool to start, and send it the moment it does. Closing the
+       terminal, a restart, a machine waking up — all of them used to end in
+       an error bubble and a message that had to be sent again by hand at a
+       moment nobody could tell. */
+    if (err.offline && !(await toolIsUp())) {
+      if (sent.length && !bot.files.length) {
+        bot.files = sent;
+        renderBotFiles();
+      }
+
+      const waiting = botBubble('bot', 'The tool is not answering — it runs on this machine. '
+        + 'Waiting for it to start; this message is still here and goes as soon as it does.',
+      'is-thinking');
+
+      const back = await waitForTheTool();
+      waiting.remove();
+
+      if (back) {
+        resend = text;
+        return;
+      }
+
+      botBubble('bot', 'Still nothing after two minutes. Start it with "npm run dev" in the '
+        + 'tool\'s folder, then press send.', 'is-error');
+      if (!el('botInput').value.trim()) el('botInput').value = text;
+      return;
+    }
+
     botBubble('bot', err.message, 'is-error');
 
     /* Nothing reached the tool, so nothing is lost: the question goes back in
@@ -3044,6 +3107,9 @@ async function askBot(question) {
     bot.busy = false;
     el('botSend').disabled = false;
     el('botInput').focus();
+    /* Sent from here rather than inside the catch: this runs first, and the
+       panel turns away a question asked while it is still busy. */
+    if (resend) setTimeout(() => askBot(resend), 0);
   }
 }
 

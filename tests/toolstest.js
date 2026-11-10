@@ -341,6 +341,57 @@ function talk(url) {
       withShots === '# DIY Email Migration Guide\n\n## Step 1: Sign In\n\n'
         + '- Click **Sign In**.\n\n![Step 1: Sign In](/api/documents/abc/assets/image-1.jpg)\n',
       JSON.stringify(withShots).slice(-64));
+
+    /* ---- a message asked while the tool is down ----
+       The terminal gets closed, the machine sleeps, the server is restarted
+       — and the tab stays open. Every question then came back "the tool is
+       not responding" and sat there, with the files kept and a note to press
+       send again at a moment nobody could tell. It waits instead. */
+    server.kill();
+    for (let i = 0; i < 40; i += 1) {
+      try { await fetch(`${BASE}/api/health`); } catch (_) { break; }
+      await wait(250);
+    }
+
+    const down = await run(`(async () => (await toolIsUp()) === false)()`);
+    record('the page can tell the tool is down', down === true, String(down));
+
+    await run(`(() => { askBot('what is email attribute'); return true; })()`);
+    await wait(1500);
+
+    const held = await run(`(() => {
+      const rows = [...document.querySelectorAll('#botLog .bot-msg')];
+      const last = rows[rows.length - 1].innerText;
+      return { last, errors: rows.filter((r) => r.querySelector('.is-error')).length };
+    })()`);
+
+    record('it says it is waiting rather than giving up',
+      /Waiting for it to start/.test(held.last), held.last.slice(0, 58));
+    record('and nothing is reported as an error yet', held.errors === 0, `${held.errors} errors`);
+
+    /* started again, the question goes by itself */
+    const again = spawn(process.execPath, ['server/index.js'], { cwd: PROJECT, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    again.stdout.on('data', (c) => (log += c));
+    again.stderr.on('data', (c) => (log += c));
+    for (let i = 0; i < 60; i += 1) {
+      try { if ((await fetch(`${BASE}/api/health`)).status === 204) break; } catch (_) {}
+      await wait(500);
+    }
+
+    /* the panel asks once a second, then sends, then waits on an answer */
+    let sent = false;
+    for (let i = 0; i < 40; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      sent = await run(`(() => [...document.querySelectorAll('#botLog .bot-msg')]
+        .some((r) => /Waiting for it to start/.test(r.innerText)) === false)()`);
+      if (sent) break;
+      // eslint-disable-next-line no-await-in-loop
+      await wait(500);
+    }
+    record('and once the tool is back the message goes by itself', sent === true,
+      sent ? 'sent without being pressed' : 'still waiting');
+
+    again.kill();
   } catch (err) {
     record('threw', false, err.message);
   }

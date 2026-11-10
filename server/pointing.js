@@ -49,6 +49,70 @@ function readJson(answer) {
   }
 }
 
+/**
+ * How big the picture is, read from its own header.
+ *
+ * @returns {{width: number, height: number}|null} null when the format is
+ *   not one of these, which is taken as no reason to doubt it
+ */
+function sizeOf(base64) {
+  let head;
+  try {
+    head = Buffer.from(String(base64 || '').slice(0, 256), 'base64');
+  } catch (err) {
+    return null;
+  }
+  if (head.length < 24) return null;
+
+  // PNG: 8-byte signature, then the IHDR length and tag, then width, height
+  if (head.toString('hex', 0, 8) === '89504e470d0a1a0a') {
+    return { width: head.readUInt32BE(16), height: head.readUInt32BE(20) };
+  }
+
+  // GIF: width and height little-endian at byte 6
+  if (head.toString('ascii', 0, 3) === 'GIF') {
+    return { width: head.readUInt16LE(6), height: head.readUInt16LE(8) };
+  }
+
+  // JPEG: walk the segments to the frame header, which carries the size
+  if (head[0] === 0xff && head[1] === 0xd8) {
+    let at = 2;
+    while (at + 9 < head.length) {
+      if (head[at] !== 0xff) return null;
+      const marker = head[at + 1];
+      const length = head.readUInt16BE(at + 2);
+      // SOF0..SOF15, bar the four that are not frame headers
+      if (marker >= 0xc0 && marker <= 0xcf
+        && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+        return { width: head.readUInt16BE(at + 7), height: head.readUInt16BE(at + 5) };
+      }
+      at += 2 + length;
+    }
+  }
+
+  return null;
+}
+
+/* Smaller than a hundred pixels square and it cannot be showing a list of
+   names with one of them marked, whatever a model says about it. */
+const TOO_SMALL_TO_SHOW_ANYTHING = 100 * 100;
+
+/**
+ * Could this picture be a screenshot of the tool?
+ *
+ * A blank one-pixel image sent with "delete it" came back as a set picked
+ * off the list, with "highlighted with a red box in the screenshot" as the
+ * reason — an invention, in a sentence the person is meant to read before
+ * agreeing to a delete. A real screenshot that happens to show something
+ * else answers "none of these" perfectly well; it is a picture with nothing
+ * in it at all that leaves a model with nothing to do but guess.
+ */
+function couldShowSomething(picture) {
+  const size = sizeOf(picture && picture.image);
+  if (!size || !size.width || !size.height) return true;
+  return size.width * size.height >= TOO_SMALL_TO_SHOW_ANYTHING;
+}
+
 /** Pictures attached to a message, video frames among them. */
 function picturesIn(attached) {
   return (attached || []).flatMap((file) => {
@@ -69,7 +133,7 @@ function picturesIn(attached) {
  * @returns {Promise<{id: string, name: string, why: string}|null>}
  */
 async function whichOneIsShown({ pictures, candidates, question = '', noun = 'write-up' }) {
-  const shots = (pictures || []).slice(0, 6);
+  const shots = (pictures || []).filter(couldShowSomething).slice(0, 6);
   const list = (candidates || []).slice(0, 25);
 
   if (!shots.length || list.length < 2) return null;
@@ -158,4 +222,4 @@ async function whichOneIsShown({ pictures, candidates, question = '', noun = 'wr
   }
 }
 
-module.exports = { whichOneIsShown, picturesIn, readJson };
+module.exports = { whichOneIsShown, picturesIn, readJson, sizeOf, couldShowSomething };

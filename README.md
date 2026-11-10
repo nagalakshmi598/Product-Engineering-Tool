@@ -145,6 +145,21 @@ Dashboard
   is taken whole, so *rename it to Gmail to Gmail migration scenarios* files it under exactly
   that.
 
+  A screenshot is read only when there is something in it to read. A picture smaller than a
+  hundred pixels square cannot be showing a list of names with one of them marked, so it is
+  not put to the model at all — a blank one-pixel image sent with *delete it* came back as a
+  set picked off the list, with *highlighted with a red box in the screenshot* for a reason,
+  which was an invention sitting in the sentence you are meant to read before agreeing to a
+  delete. A real screenshot of something else is fine: it answers none of these, and the tool
+  asks which you meant.
+
+  If the tool is not answering — the terminal was closed, the server restarted, the machine
+  woke up — the chat does not throw the message away. It says it is waiting, keeps the text
+  and the files, asks once a second whether the tool is back, and sends as soon as it is. It
+  only does this when the tool is genuinely down, which is also what makes it safe: a message
+  that never arrived cannot have been half carried out. After two minutes it stops and tells
+  you to start the server.
+
   Rows are picked out by number, however the numbers are written. *Delete scenarios 4, 5 and
   6*, *delete 4 5 6*, *delete scenario no 4,5*, *delete #4 #5*, *delete 35 to 58*, *delete
   12-15 and 20* all name the same kind of thing, and every number given is taken — a space
@@ -265,6 +280,7 @@ See [samples/sample-test-scenarios.csv](samples/sample-test-scenarios.csv) for t
 
 | Method | Route | Purpose |
 | --- | --- | --- |
+| GET | `/api/health` | 204 and nothing else — what the chat asks while the tool is down |
 | GET | `/api/products` | Products with enhancement + scenario counts |
 | GET | `/api/products/:product/enhancements` | Enhancements of a product |
 | POST | `/api/enhancements` | New enhancement + scenario file (multipart: `product`, `name`, `description`, `file`, `splitLines`) |
